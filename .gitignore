@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+comfy_trt/Unet-onnx/
+comfy_trt/Unet-trt/
