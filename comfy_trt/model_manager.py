@@ -13,6 +13,7 @@ if not os.path.exists(ONNX_MODEL_DIR):
 TRT_MODEL_DIR = os.path.join(BASE_PATH, "Unet-trt")
 if not os.path.exists(TRT_MODEL_DIR):
 	os.makedirs(TRT_MODEL_DIR)
+LORA_MODEL_DIR = os.path.join(BASE_PATH, "Lora")
 NVIDIA_CACHE_URL = ""
 
 MODEL_FILE = os.path.join(TRT_MODEL_DIR, "model.json")
@@ -74,18 +75,7 @@ class ModelManager:
 
 		self.write_json()
 
-	def add_entry(
-		self,
-		model_name,
-		profile,
-		static_shapes,
-		fp32,
-		inpaint,
-		refit,
-		vram,
-		unet_hidden_dim,
-		lora,
-	):
+	def add_entry(self, model_name, profile, static_shapes, fp32, inpaint, refit, vram, unet_hidden_dim, lora):
 		config = ModelConfig(profile, static_shapes, fp32, inpaint, refit, lora, vram, unet_hidden_dim)
 		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
 
@@ -126,9 +116,8 @@ class ModelManager:
 		return available
 
 	def get_timing_cache(self):
-		current_dir = os.path.dirname(os.path.abspath(__file__))
 		cache = os.path.join(
-			current_dir,
+			BASE_PATH,
 			"timing_caches",
 			"timing_cache_{}_{}.cache".format("win" if os.name == "nt" else "linux", self.cc),
 		)

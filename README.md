@@ -21,6 +21,9 @@ pip install --pre tensorrt==9.0.1.post11.dev4 --extra-index-url https://pypi.nvi
 cd custom_nodes/comfy-trt-test
 python convert_unet.py --help
 ```
+
+**ISSUES**: find out how comfy load model, require `.forward()` method for onnx export
+
 reference: https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
 
 inspirations for implementation:

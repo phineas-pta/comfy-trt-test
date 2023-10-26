@@ -130,7 +130,7 @@ def get_unet_embedding_dim(version, pipeline):
 		raise ValueError(f"Invalid version {version} + pipeline {pipeline}")
 
 
-class BaseModel:
+class BaseModelBis:  # change name to distingush from existing 1 in comfy
 	def __init__(
 		self,
 		version="SD15",
@@ -142,7 +142,6 @@ class BaseModel:
 		max_batch_size=16,
 		text_maxlen=77,
 		embedding_dim=768,
-		controlnet=None,
 	):
 		self.name = self.__class__.__name__
 		self.pipeline = pipeline.name
@@ -254,7 +253,7 @@ class BaseModel:
 			raise Exception("Uncovered case in get_batch_dim")
 
 
-class CLIP(BaseModel):
+class CLIP(BaseModelBis):
 	def __init__(
 		self,
 		version,
@@ -338,29 +337,6 @@ class CLIP(BaseModel):
 		return opt_onnx_graph
 
 
-def make_CLIP(
-	version,
-	pipeline,
-	hf_token,
-	device,
-	verbose,
-	max_batch_size,
-	output_hidden_states=False,
-	subfolder="text_encoder",
-):
-	return CLIP(
-		version,
-		pipeline,
-		hf_token,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-		embedding_dim=get_clip_embedding_dim(version, pipeline),
-		output_hidden_states=output_hidden_states,
-		subfolder=subfolder,
-	)
-
-
 class CLIPWithProj(CLIP):
 	def __init__(
 		self,
@@ -395,28 +371,6 @@ class CLIPWithProj(CLIP):
 			output["hidden_states"] = (batch_size, self.text_maxlen, self.embedding_dim)
 
 		return output
-
-
-def make_CLIPWithProj(
-	version,
-	pipeline,
-	hf_token,
-	device,
-	verbose,
-	max_batch_size,
-	subfolder="text_encoder_2",
-	output_hidden_states=False,
-):
-	return CLIPWithProj(
-		version,
-		pipeline,
-		hf_token,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-		subfolder=subfolder,
-		output_hidden_states=output_hidden_states,
-	)
 
 
 class UNet2DConditionControlNetModel(torch.nn.Module):
@@ -458,7 +412,7 @@ class UNet2DConditionControlNetModel(torch.nn.Module):
 		return noise_pred
 
 
-class UNet(BaseModel):
+class UNet(BaseModelBis):
 	def __init__(
 		self,
 		version,
@@ -591,21 +545,7 @@ class UNet(BaseModel):
 			)
 
 
-def make_UNet(version, pipeline, hf_token, device, verbose, max_batch_size, controlnet=None):
-	return UNet(
-		version,
-		pipeline,
-		hf_token,
-		fp16=True,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-		unet_dim=(9 if pipeline.is_inpaint() else 4),
-		controlnet=get_controlnets_path(controlnet),
-	)
-
-
-class OAIUNet(BaseModel):
+class OAIUNet(BaseModelBis):
 	def __init__(
 		self,
 		version,
@@ -750,22 +690,7 @@ class OAIUNet(BaseModel):
 			)
 
 
-def make_OAIUNet(version, pipeline, device, verbose, max_batch_size, text_optlen, text_maxlen, controlnet=None):
-	return OAIUNet(
-		version,
-		pipeline,
-		fp16=True,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-		text_optlen=text_optlen,
-		text_maxlen=text_maxlen,
-		unet_dim=(9 if pipeline.is_inpaint() else 4),
-		controlnet=get_controlnets_path(controlnet),
-	)
-
-
-class OAIUNetXL(BaseModel):
+class OAIUNetXL(BaseModelBis):
 	def __init__(
 		self,
 		version,
@@ -867,21 +792,7 @@ class OAIUNetXL(BaseModel):
 		)
 
 
-def make_OAIUNetXL(version, pipeline, device, verbose, max_batch_size, text_optlen, text_maxlen):
-	return OAIUNetXL(
-		version,
-		pipeline,
-		fp16=True,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-		unet_dim=(9 if pipeline.is_inpaint() else 4),
-		text_optlen=text_optlen,
-		text_maxlen=text_maxlen,
-	)
-
-
-class VAE(BaseModel):
+class VAE(BaseModelBis):
 	def __init__(self, version, pipeline, hf_token, device, verbose, max_batch_size):
 		super(VAE, self).__init__(
 			version,
@@ -945,18 +856,7 @@ class VAE(BaseModel):
 		)
 
 
-def make_VAE(version, pipeline, hf_token, device, verbose, max_batch_size):
-	return VAE(
-		version,
-		pipeline,
-		hf_token,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-	)
-
-
-class VAEEncoder(BaseModel):
+class VAEEncoder(BaseModelBis):
 	def __init__(
 		self,
 		version,
@@ -1023,14 +923,3 @@ class VAEEncoder(BaseModel):
 	def get_sample_input(self, batch_size, image_height, image_width):
 		self.check_dims(batch_size, image_height, image_width)
 		return torch.randn(batch_size, 3, image_height, image_width, dtype=torch.float32, device=self.device)
-
-
-def make_VAEEncoder(version, pipeline, hf_token, device, verbose, max_batch_size):
-	return VAEEncoder(
-		version,
-		pipeline,
-		hf_token,
-		device=device,
-		verbose=verbose,
-		max_batch_size=max_batch_size,
-	)

@@ -4,3 +4,4 @@ __pycache__/
 
 comfy_trt/Unet-onnx/
 comfy_trt/Unet-trt/
+onnx_tmp/

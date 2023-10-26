@@ -21,12 +21,6 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 	if swap_sdpa:
 		delattr(F, "scaled_dot_product_attention")
 
-	def disable_checkpoint(self):
-		if getattr(self, "use_checkpoint", False):
-			self.use_checkpoint = False
-		if getattr(self, "checkpoint", False):
-			self.checkpoint = False
-
 	os.makedirs("onnx_tmp", exist_ok=True)
 	tmp_path = os.path.abspath(os.path.join("onnx_tmp", "tmp.onnx"))
 
@@ -59,7 +53,7 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 		else:
 			onnx_opt_graph = modelobj.optimize(onnx_graph)
 
-		if onnx_opt_graph.ByteSize() > 2147483648 or is_xl:
+		if onnx_opt_graph.ByteSize() > 2147483648 or is_sdxl:
 			onnx.save_model(
 				onnx_opt_graph,
 				onnx_path,
