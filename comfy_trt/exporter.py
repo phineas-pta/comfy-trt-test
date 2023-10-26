@@ -1,10 +1,13 @@
-import torch
-import torch.nn.functional as F
-import onnx
-from logging import info, error
+# -*- coding: utf-8 -*-
+
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/exporter.py
+
+import logging
 import time
 import shutil
 import os
+import torch
+import onnx
 
 from .utilities import Engine
 
@@ -16,16 +19,12 @@ def get_cc():
 
 
 def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, opset=17, diable_optimizations=False, lora_path=None):
-	swap_sdpa = hasattr(F, "scaled_dot_product_attention")
-	old_sdpa = getattr(F, "scaled_dot_product_attention", None) if swap_sdpa else None
-	if swap_sdpa:
-		delattr(F, "scaled_dot_product_attention")
 
 	os.makedirs("onnx_tmp", exist_ok=True)
 	tmp_path = os.path.abspath(os.path.join("onnx_tmp", "tmp.onnx"))
 
 	try:
-		info("Exporting to ONNX...")
+		logging.info("Exporting to ONNX...")
 		with torch.inference_mode(), torch.autocast("cuda"):
 			inputs = modelobj.get_sample_input(
 				profile["sample"][1][0] // 2,
@@ -45,7 +44,7 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 				dynamic_axes=modelobj.get_dynamic_axes(),
 			)
 
-		info("Optimize ONNX.")
+		logging.info("Optimize ONNX.")
 
 		onnx_graph = onnx.load(tmp_path)
 		if diable_optimizations:
@@ -65,8 +64,8 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 			try:
 				onnx.save(onnx_opt_graph, onnx_path)
 			except Exception as e:
-				error(e)
-				error("ONNX file too large. Saving as external data.")
+				logging.error(e)
+				logging.error("ONNX file too large. Saving as external data.")
 				onnx.save_model(
 					onnx_opt_graph,
 					onnx_path,
@@ -74,15 +73,13 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 					all_tensors_to_one_file=True,
 					convert_attribute=False,
 				)
-		info("ONNX export complete.")
+		logging.info("ONNX export complete.")
 		del onnx_opt_graph
 	except Exception as e:
-		error(e)
+		logging.error(e)
 		exit()
 
 	# CleanUp
-	if swap_sdpa and old_sdpa:
-		setattr(F, "scaled_dot_product_attention", old_sdpa)
 	shutil.rmtree(os.path.abspath("onnx_tmp"))
 	del model
 
@@ -104,6 +101,6 @@ def export_trt(trt_path, onnx_path, timing_cache, profile, use_fp16):
 		# hwCompatibility=hwCompatibility,
 	)
 	e = time.time()
-	info(f"Time taken to build: {(e-s)}s")
+	logging.info(f"Time taken to build: {(e-s)}s")
 
 	return ret

@@ -1,4 +1,7 @@
-#
+# -*- coding: utf-8 -*-
+
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/models.py
+
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,14 +14,12 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+# See the License for the specific language governing permissions and limitations under the License.
 
-import onnx
 import os
-from polygraphy.backend.onnx.loader import fold_constants
 import tempfile
+import onnx
+from polygraphy.backend.onnx.loader import fold_constants
 import torch
 import onnx_graphsurgeon as gs
 
@@ -92,24 +93,6 @@ class Optimizer:
 			return onnx_graph
 
 
-def get_controlnets_path(controlnet_list):
-	"""not yet supported."""
-	if controlnet_list is None:
-		return None
-	return ["lllyasviel/sd-controlnet-" + controlnet for controlnet in controlnet_list]
-
-
-def get_clip_embedding_dim(version, pipeline):
-	if version == "SD15":
-		return 768
-	elif version in ["SD20", "SD21UnclipL", "SD21UnclipH"]:
-		return 1024
-	elif version in ["SDXLRefiner", "SDXL"] and pipeline.is_sd_xl_base():
-		return 768
-	else:
-		raise ValueError(f"Invalid version {version} + pipeline {pipeline}")
-
-
 def get_clipwithproj_embedding_dim(version, pipeline):
 	if version in ["SDXLRefiner", "SDXL"]:
 		return 1280
@@ -122,9 +105,9 @@ def get_unet_embedding_dim(version, pipeline):
 		return 768
 	elif version in ["SD20", "SD21UnclipL", "SD21UnclipH"]:
 		return 1024
-	elif version in ["SDXLRefiner", "SDXL"] and pipeline.is_sd_xl_base():
+	elif version == "SDXL" and pipeline.is_sd_xl_base():
 		return 2048
-	elif version in ["SDXLRefiner", "SDXL"] and pipeline.is_sd_xl_refiner():
+	elif version == "SDXLRefiner" and pipeline.is_sd_xl_refiner():
 		return 1280
 	else:
 		raise ValueError(f"Invalid version {version} + pipeline {pipeline}")
@@ -238,7 +221,8 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 	def get_latent_dim(self, min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape):
 		if static_shape:
 			return opt_h // 8, opt_h // 8, opt_h // 8, opt_w // 8, opt_w // 8, opt_w // 8
-		return min_h // 8, opt_h // 8, max_h // 8, min_w // 8, opt_w // 8, max_w // 8
+		else:
+			return min_h // 8, opt_h // 8, max_h // 8, min_w // 8, opt_w // 8, max_w // 8
 
 	def get_batch_dim(self, min_batch, opt_batch, max_batch, static_batch):
 		if self.text_maxlen <= 77:
@@ -288,7 +272,10 @@ class CLIP(BaseModelBis):
 		return ["text_embeddings"]
 
 	def get_dynamic_axes(self):
-		return {"input_ids": {0: "B"}, "text_embeddings": {0: "B"}}
+		return {
+			"input_ids": {0: "B"},
+			"text_embeddings": {0: "B"}
+		}
 
 	def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
 		self.check_dims(batch_size, image_height, image_width)
@@ -704,6 +691,7 @@ class OAIUNetXL(BaseModelBis):
 		unet_dim=4,
 		time_dim=6,
 		num_classes=2816,
+		controlnet=None,
 	):
 		super(OAIUNetXL, self).__init__(
 			version,

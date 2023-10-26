@@ -1,8 +1,12 @@
+# -*- coding: utf-8 -*-
+
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/ui_trt.py
+
+import argparse
 import sys
 import os.path
 import gc
 import torch
-import argparse
 
 from comfy_trt.exporter import export_onnx, export_trt
 from comfy_trt.utilities import PIPELINE_TYPE
@@ -39,16 +43,17 @@ def parseArgs():
 
 def get_config_from_checkpoint(ckpt_path: str) -> dict:
 	"""see comfy/sd.py > load_checkpoint_guess_config"""
+	temp_str = "model.diffusion_model."
 	sd = load_torch_file(ckpt_path)
-	parameters = calculate_parameters(sd, "model.diffusion_model.")
+	parameters = calculate_parameters(sd, temp_str)
 	unet_dtype = get_unet_dtype(model_params=parameters)
-	unet_config = detect_unet_config(sd, "model.diffusion_model.", unet_dtype)
+	unet_config = detect_unet_config(sd, temp_str, unet_dtype)
 	for model_config in LIST_MODELS:
 		if model_config.matches(unet_config):
-			model = model_config(unet_config).get_model(sd, "model.diffusion_model.", device="cuda")
-			model.load_model_weights(sd, "model.diffusion_model.")
+			model = model_config(unet_config).get_model(sd, temp_str, device="cuda")
+			model.load_model_weights(sd, temp_str)
 			return {
-				"model": model,
+				"model": model.diffusion_model,
 				"sd_ver": model_config.__qualname__,
 				"unet_hidden_dim": unet_config["in_channels"]
 			}
@@ -63,6 +68,8 @@ if __name__ == "__main__":
 		print("FP16 has been disabled because your GPU does not support it.")
 
 	version = ckpt_config["sd_ver"]
+	print(f"detected base model version: {version}")
+
 	if version in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
 		if args.height_min is None: args.height_min = 512
 		if args.height_opt is None: args.height_opt = 512
@@ -70,13 +77,15 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	elif version in ["SDXLRefiner", "SDXL"]:
+	elif version == "SDXL":
 		if args.height_min is None: args.height_min = 768
 		if args.height_opt is None: args.height_opt = 1024
 		if args.height_max is None: args.height_max = 1024
 		if args.width_min is None: args.width_min = 768
 		if args.width_opt is None: args.width_opt = 1024
 		if args.width_max is None: args.width_max = 1024
+	elif version == "SDXLRefiner":
+		raise ValueError("SDXL refiner not yet supported")
 	else:
 		raise ValueError("cannot detect sd base model version from ckpt")
 
@@ -84,6 +93,13 @@ if __name__ == "__main__":
 		raise ValueError("height and width have to be divisible by 8")
 	if not (args.height_min <= args.height_opt <= args.height_max and args.width_min <= args.width_opt <= args.width_max):
 		raise ValueError("need min ≤ opt ≤ max")
+	print(
+		"[I] size & shape parameters:",
+		f"    - {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
+		f"    - {args.height_min=}, {args.height_opt=}, {args.height_max=}",
+		f"    - {args.width_min=}, {args.width_opt=}, {args.width_max=}",
+		sep="\n"
+	)
 
 	model_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
 	onnx_filename, onnx_path = modelmanager.get_onnx_path(model_name)
@@ -128,7 +144,6 @@ if __name__ == "__main__":
 			text_optlen=opt_textlen,
 			text_maxlen=max_textlen,
 			unet_dim=ckpt_config["unet_hidden_dim"],
-			controlnet=None
 		)
 
 	profile = modelobj.get_input_profile(
@@ -159,13 +174,15 @@ if __name__ == "__main__":
 
 	trt_engine_filename, trt_path = modelmanager.get_trt_path(model_name, profile, args.static_shapes)
 
+	del ckpt_config["model"]
+	gc.collect()
+	torch.cuda.empty_cache()
+
 	if not os.path.exists(trt_path) or args.force_export:
 		print("Building TensorRT engine... This can take a while, please check the progress in the terminal.")
-		gc.collect()
-		torch.cuda.empty_cache()
 		ret = export_trt(trt_path, onnx_path, timing_cache, profile=profile, use_fp16=not args.float32)
 		if ret:
-			print("## Export Failed due to unknown reason. See shell for more information.")
+			print("Export Failed due to unknown reason.")
 
 		else:
 			print("TensorRT engines has been saved to disk.")

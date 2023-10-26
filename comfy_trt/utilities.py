@@ -1,4 +1,7 @@
-#
+# -*- coding: utf-8 -*-
+
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/utilities.py
+
 # Copyright 2022 The HuggingFace Inc. team.
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -12,11 +15,12 @@
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+# See the License for the specific language governing permissions and limitations under the License.
 
 from collections import OrderedDict
+from enum import Enum, auto
+import logging
+import copy
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
@@ -33,11 +37,7 @@ from polygraphy.backend.trt import (
 import tensorrt as trt
 import torch
 from torch.cuda import nvtx
-from enum import Enum, auto
 from safetensors.numpy import save_file, load_file
-from logging import error, warning
-from tqdm import tqdm
-import copy
 
 TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
 
@@ -170,7 +170,7 @@ class Engine:
 				try:
 					add_to_map(refit_dict, name, n.outputs[0].values)
 				except:
-					error(f"Failed to add Constant {name}\n")
+					logging.error(f"Failed to add Constant {name}\n")
 
 			# Handle scale and bias weights
 			elif n.op == "Conv":
@@ -179,14 +179,14 @@ class Engine:
 					try:
 						add_to_map(refit_dict, name, n.inputs[1].values)
 					except:
-						error(f"Failed to add Conv {name}\n")
+						logging.error(f"Failed to add Conv {name}\n")
 
 				if n.inputs[2].__class__ == gs.Constant:
 					name = map_name(n.name + "_TRTBIAS")
 					try:
 						add_to_map(refit_dict, name, n.inputs[2].values)
 					except:
-						error(f"Failed to add Conv {name}\n")
+						logging.error(f"Failed to add Conv {name}\n")
 
 			# For all other nodes: find node inputs that are initializers (AKA gs.Constant)
 			else:
@@ -289,7 +289,7 @@ class Engine:
 				timing_cache_data = util.load_file(timing_cache, description="tactic timing cache")
 				cache = config.create_timing_cache(timing_cache_data)
 		except FileNotFoundError:
-			warning(f"Timing cache file {timing_cache} not found, falling back to empty timing cache.")
+			logging.warning(f"Timing cache file {timing_cache} not found, falling back to empty timing cache.")
 		if cache is not None:
 			config.set_timing_cache(cache, ignore_mismatch=True)
 
@@ -303,12 +303,12 @@ class Engine:
 		try:
 			engine = engine_from_network(network, config, save_timing_cache=timing_cache)
 		except Exception as e:
-			error(f"Failed to build engine: {e}")
+			logging.error(f"Failed to build engine: {e}")
 			return 1
 		try:
 			save_engine(engine, path=self.engine_path)
 		except Exception as e:
-			error(f"Failed to save engine: {e}")
+			logging.error(f"Failed to save engine: {e}")
 			return 1
 		return 0
 

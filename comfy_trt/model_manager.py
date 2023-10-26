@@ -1,6 +1,10 @@
+# -*- coding: utf-8 -*-
+
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/model_manager.py
+
 import json
 import os
-from logging import info, warning
+import logging
 from dataclasses import dataclass
 import torch
 
@@ -27,7 +31,7 @@ class ModelManager:
 		self.model_file = model_file
 		self.cc = f"cc{cc_major}{cc_minor}"
 		if not os.path.exists(model_file):
-			warning("Model file does not exist. Creating new one.")
+			logging.warning("Model file does not exist. Creating new one.")
 		else:
 			self.all_models = self.read_json()
 
@@ -48,8 +52,8 @@ class ModelManager:
 				dim_hash.append("x".join([str(x) for x in v[i]]))
 			profile_hash.append(k + "=" + "+".join(dim_hash))
 
-		profile_hash = "-".join(profile_hash)
-		trt_filename = ("_".join([model_name, self.cc, profile_hash]) + ".trt")
+		# profile_hash = "-".join(profile_hash) # go into file name below if wanted
+		trt_filename = ("_".join([model_name, self.cc]) + ".trt")
 		trt_path = os.path.join(TRT_MODEL_DIR, trt_filename)
 
 		return trt_filename, trt_path
@@ -63,7 +67,7 @@ class ModelManager:
 				tmp_config_list = {}
 				for model_config in models:
 					if model_config["filepath"] not in trt_engines:
-						info(f"Model config outdated. {model_config['filepath']} was not found")
+						logging.info(f"Model config outdated. {model_config['filepath']} was not found")
 						continue
 					tmp_config_list[model_config["filepath"]] = model_config
 
