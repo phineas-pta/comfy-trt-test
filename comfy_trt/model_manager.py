@@ -17,8 +17,6 @@ if not os.path.exists(ONNX_MODEL_DIR):
 TRT_MODEL_DIR = os.path.join(BASE_PATH, "Unet-trt")
 if not os.path.exists(TRT_MODEL_DIR):
 	os.makedirs(TRT_MODEL_DIR)
-LORA_MODEL_DIR = os.path.join(BASE_PATH, "Lora")
-NVIDIA_CACHE_URL = ""
 
 MODEL_FILE = os.path.join(TRT_MODEL_DIR, "model.json")
 

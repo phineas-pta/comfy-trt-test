@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/ui_trt.py
+# STATUS: ok i guess
 
 import argparse
 import sys
@@ -13,7 +14,7 @@ from comfy_trt.utilities import PIPELINE_TYPE
 from comfy_trt.models import OAIUNet, OAIUNetXL
 from comfy_trt.model_manager import modelmanager, cc_major
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+sys.path.append(os.path.join("..", ".."))
 from comfy.utils import load_torch_file, calculate_parameters
 from comfy.supported_models import models as LIST_MODELS
 from comfy.model_detection import detect_unet_config
@@ -23,6 +24,7 @@ from comfy.model_management import unet_dtype as get_unet_dtype
 def parseArgs():
 	parser = argparse.ArgumentParser(description="test: convert Stable Diffusion checkpoint to TensorRT engine")
 	parser.add_argument("--ckpt_path", required=True)
+	parser.add_argument("--output_name", help=".onnx & .trt file name, default to ckpt file name")
 	parser.add_argument("--batch_min", type=int, default=1)
 	parser.add_argument("--batch_opt", type=int, default=1)
 	parser.add_argument("--batch_max", type=int, default=1, help="can go up to 4")
@@ -89,23 +91,22 @@ if __name__ == "__main__":
 	else:
 		raise ValueError("cannot detect sd base model version from ckpt")
 
-	if args.height_min % 8 != 0 or args.height_opt % 8 != 0 or args.height_max % 8 != 0 or args.width_min % 8 != 0 or args.width_opt % 8 != 0 or args.width_max % 8 != 0:
-		raise ValueError("height and width have to be divisible by 8")
+	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:
+		raise ValueError("height and width have to be divisible by 64")
 	if not (args.height_min <= args.height_opt <= args.height_max and args.width_min <= args.width_opt <= args.width_max):
 		raise ValueError("need min ≤ opt ≤ max")
 	print(
 		"[I] size & shape parameters:",
-		f"    - {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
-		f"    - {args.height_min=}, {args.height_opt=}, {args.height_max=}",
-		f"    - {args.width_min=}, {args.width_opt=}, {args.width_max=}",
-		sep="\n"
+		f"- {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
+		f"- {args.height_min=}, {args.height_opt=}, {args.height_max=}",
+		f"- {args.width_min=}, {args.width_opt=}, {args.width_max=}",
+		sep="\n    ", end="\n\n"
 	)
 
-	model_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
-	onnx_filename, onnx_path = modelmanager.get_onnx_path(model_name)
-
-	print(f"Exporting {model_name} to TensorRT")
-
+	if args.output_name is None:
+		args.output_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
+	onnx_filename, onnx_path = modelmanager.get_onnx_path(args.output_name)
+	print(f"Exporting {args.output_name} to TensorRT")
 	timing_cache = modelmanager.get_timing_cache()
 
 	pipeline = PIPELINE_TYPE.TXT2IMG
@@ -172,7 +173,7 @@ if __name__ == "__main__":
 		)
 		print("Exported to ONNX.")
 
-	trt_engine_filename, trt_path = modelmanager.get_trt_path(model_name, profile, args.static_shapes)
+	trt_engine_filename, trt_path = modelmanager.get_trt_path(args.output_name, profile, args.static_shapes)
 
 	del ckpt_config["model"]
 	gc.collect()
@@ -187,7 +188,7 @@ if __name__ == "__main__":
 		else:
 			print("TensorRT engines has been saved to disk.")
 			modelmanager.add_entry(
-				model_name,
+				args.output_name,
 				profile,
 				args.static_shapes,
 				fp32=args.float32,
