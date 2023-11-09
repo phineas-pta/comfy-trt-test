@@ -3,46 +3,32 @@
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/scripts/trt.py
 # STATUS: draft !!!
 
+# rabbit hole 1: a1111 unet loader
+# - https://github.com/AUTOMATIC1111/stable-diffusion-webui/blob/dev/modules/sd_unet.py
+
+# rabbit hole 2: comfy unet loader
+# - https://github.com/comfyanonymous/ComfyUI/blob/master/nodes.py  >>>  UNETLoader
+# - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/sd.py  >>>  load_unet
+# - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/model_patcher.py
+# - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/model_base.py
+
+
 import os
 import numpy as np
 import torch
 from torch.cuda import nvtx
 from .comfy_trt.model_manager import TRT_MODEL_DIR, modelmanager
 from .comfy_trt.utilities import Engine
-from comfy.model_base import BaseModel
 
-LIST_ENGINES = {
-	f: os.path.join(TRT_MODEL_DIR, f)
-	for f in os.listdir(TRT_MODEL_DIR)
-	if f.endswith(".trt")
-}
-
-
-class TrtUnetOption:
-	def __init__(self, name: str, filename: list):
-		self.label = f"[TRT] {name}"
-		self.model_name = name
-		self.configs = filename
-
-	def create_unet(self):
-		lora_path = None
-		if self.configs[0]["config"].lora:
-			lora_path = os.path.join(TRT_MODEL_DIR, self.configs[0]["filepath"])
-			self.model_name = self.configs[0]["base_model"]
-			self.configs = modelmanager.available_models()[self.model_name]
-		return TrtUnet(self.model_name, self.configs, lora_path)
-
-MODELS = modelmanager.available_models()
-YOLO = [
-	TrtUnetOption(
-		"{} ({})".format(k, v[0]["base_model"]) if v[0]["config"].lora else k,
-		v
-	) for k, v in MODELS.items()
-]
+LIST_ENGINES = modelmanager.available_models()
 
 
 class TRT_Unet_Loader:
+	"""ComfyUI node"""
+
 	RETURN_TYPES = ("MODEL",)
+	CATEGORY = "advanced/loaders"
+	FUNCTION = "load_trt"
 
 	@classmethod
 	def INPUT_TYPES(cls):
@@ -52,13 +38,28 @@ class TRT_Unet_Loader:
 			}
 		}
 
-	def _load(self, engine_file):
-		pass
+	def load_trt(self, engine_file):
+		configs: list = LIST_ENGINES[engine_file]
+		if configs[0]["config"].lora:
+			model_name = configs[0]["base_model"]
+			lora_path = os.path.join(TRT_MODEL_DIR, configs[0]["filepath"])
+		else:
+			model_name = engine_file
+			lora_path = None
+		return (TrtUnetWrapper(model_name, configs, lora_path),)
 
-class TrtModelWrapper(BaseModel):
-	def __init__(self, model_config):
-		super().__init__(model_config)
-		self.diffusion_model = None
+
+class TrtUnetWrapper:
+	"""ComfyUI unet"""
+
+	def __init__(self, model_name: str, configs: list, lora_path: str):
+		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
+		self.latent_format = None # model_config.latent_format
+		self.model_config = None # model_config
+		self.model_type = None # model_type
+		self.model_sampling = None # model_sampling(model_config, model_type)
+		self.adm_channels = None # unet_config.get("adm_in_channels", None)
+		self.inpaint_model = False
 
 	def apply_model(self, x, t, c_concat=None, c_crossattn=None, c_adm=None, control=None, transformer_options={}):
 		return None
@@ -66,8 +67,23 @@ class TrtModelWrapper(BaseModel):
 	def get_dtype(self):
 		return torch.float16
 
+	def is_adm(self):
+		return self.adm_channels > 0
+
+	def encode_adm(self, **kwargs):
+		return None
+
+	def extra_conds(self, **kwargs):
+		return None
+
+	def set_inpaint(self):
+		self.inpaint_model = True
+
+
 class TrtUnet:
-	def __init__(self, model_name: str, configs: list, lora_path):
+	"""A1111 unet"""
+
+	def __init__(self, model_name: str, configs: list, lora_path: str):
 		self.configs = configs
 		self.stream = None
 		self.model_name = model_name

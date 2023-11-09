@@ -56,15 +56,15 @@ may take up to ½ h
 **NOT WORKING YET**
 
 ISSUES: how to write node: still looking for possibilities:
-- 1 node with all (unet + sampler) like https://github.com/0xbitches/ComfyUI-LCM
-- unet loader only (need ModelPatcher) like https://github.com/aszc-dev/ComfyUI-CoreMLSuite
-- unet loader without patch like https://github.com/city96/ComfyUI_ExtraModels
+- 1 node with all (unet + sampler) like https://github.com/0xbitches/ComfyUI-LCM/blob/main/nodes.py
+- unet CoreML like https://github.com/aszc-dev/ComfyUI-CoreMLSuite/blob/main/coreml_suite/models.py
+- unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
+- unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
 
 ## appendix
 
 reference: https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
 
-inspirations for GUI implementation:
-- https://github.com/aszc-dev/ComfyUI-CoreMLSuite
-- https://github.com/0xbitches/ComfyUI-LCM
-- https://github.com/city96/ComfyUI_ExtraModels
+???
+- https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
+- https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
