@@ -45,7 +45,7 @@ git update-index --skip-worktree timing_cache_win_cc89.cache
 
 ### convert checkpoint to tensorrt engine
 
-navigate console back to `comfy-trt-test/`
+navigate console to `comfy-trt-test/`
 
 for options see `python convert_unet.py --help`
 

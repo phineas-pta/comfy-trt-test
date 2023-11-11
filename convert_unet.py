@@ -25,8 +25,8 @@ def parseArgs():
 	parser = argparse.ArgumentParser(description="test: convert Stable Diffusion checkpoint to TensorRT engine")
 	parser.add_argument("--ckpt_path", required=True)
 	parser.add_argument("--output_name", help=".onnx & .trt file name, default to ckpt file name")
-	parser.add_argument("--batch_min", type=int, default=1)
-	parser.add_argument("--batch_opt", type=int, default=1)
+	parser.add_argument("--batch_min", type=int, default=1, help="default 1")
+	parser.add_argument("--batch_opt", type=int, default=1, help="default 1")
 	parser.add_argument("--batch_max", type=int, default=1, help="can go up to 4")
 	parser.add_argument("--height_min", type=int, help="default 768 if sdxl else 512")
 	parser.add_argument("--height_opt", type=int, help="default 1024 if sdxl else 512")
@@ -34,9 +34,9 @@ def parseArgs():
 	parser.add_argument("--width_min", type=int, help="default 768 if sdxl else 512")
 	parser.add_argument("--width_opt", type=int, help="default 768 if sdxl else 512")
 	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768")
-	parser.add_argument("--token_count_min", type=int, default=75)
-	parser.add_argument("--token_count_opt", type=int, default=75)
-	parser.add_argument("--token_count_max", type=int, default=150)
+	parser.add_argument("--token_count_min", type=int, default=75, help="default 75")
+	parser.add_argument("--token_count_opt", type=int, default=75, help="default 75")
+	parser.add_argument("--token_count_max", type=int, default=150, help="default 150")
 	parser.add_argument("--force_export", action="store_true")
 	parser.add_argument("--static_shapes", action="store_true")
 	parser.add_argument("--float32", action="store_true")
@@ -44,7 +44,7 @@ def parseArgs():
 
 
 def get_config_from_checkpoint(ckpt_path: str) -> dict:
-	"""see comfy/sd.py > load_checkpoint_guess_config"""
+	"""see comfy/sd.py >>> load_checkpoint_guess_config"""
 	temp_str = "model.diffusion_model."
 	sd = load_torch_file(ckpt_path)
 	parameters = calculate_parameters(sd, temp_str)
@@ -86,8 +86,8 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 768
 		if args.width_opt is None: args.width_opt = 1024
 		if args.width_max is None: args.width_max = 1024
-	elif version == "SDXLRefiner":
-		raise ValueError("SDXL refiner not yet supported")
+	elif version in ["SDXLRefiner", "SSD1B"]:
+		raise ValueError(f"{version} not yet supported")
 	else:
 		raise ValueError("cannot detect sd base model version from ckpt")
 
@@ -192,6 +192,7 @@ if __name__ == "__main__":
 				profile,
 				args.static_shapes,
 				fp32=args.float32,
+				diffusion_model=version,
 				inpaint=ckpt_config["unet_hidden_dim"] > 4,
 				refit=True,
 				vram=0,

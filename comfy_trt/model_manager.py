@@ -77,8 +77,8 @@ class ModelManager:
 
 		self.write_json()
 
-	def add_entry(self, model_name, profile, static_shapes, fp32, inpaint, refit, vram, unet_hidden_dim, lora):
-		config = ModelConfig(profile, static_shapes, fp32, inpaint, refit, lora, vram, unet_hidden_dim)
+	def add_entry(self, model_name, profile, static_shapes, fp32, diffusion_model, inpaint, refit, vram, unet_hidden_dim, lora):
+		config = ModelConfig(profile, static_shapes, fp32, diffusion_model, inpaint, refit, lora, vram, unet_hidden_dim)
 		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
 
 		base_model_name = f"{model_name}"
@@ -91,8 +91,8 @@ class ModelManager:
 
 		self.write_json()
 
-	def add_lora_entry(self, base_model, lora_name, trt_lora_path, fp32, inpaint, vram, unet_hidden_dim):
-		config = ModelConfig([[], [], []], False, fp32, inpaint, True, True, vram, unet_hidden_dim)
+	def add_lora_entry(self, base_model, lora_name, trt_lora_path, fp32, diffusion_model, inpaint, vram, unet_hidden_dim):
+		config = ModelConfig([[], [], []], False, fp32, diffusion_model, inpaint, True, True, vram, unet_hidden_dim)
 		self.all_models[self.cc][lora_name] = [{"filepath": trt_lora_path, "base_model": base_model, "config": config}]
 		self.write_json()
 
@@ -142,6 +142,7 @@ class ModelConfig:
 	profile: dict
 	static_shapes: bool
 	fp32: bool
+	diffusion_model: str  # new entry to save model info, for values see comfy/supported_models.py
 	inpaint: bool
 	refit: bool
 	lora: bool
