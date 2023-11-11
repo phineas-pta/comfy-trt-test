@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/scripts/trt.py
-# STATUS: draft !!!
+# STATUS: working but need clean vram to change model
 
 # rabbit hole 1: a1111 unet loader
 # - https://github.com/AUTOMATIC1111/stable-diffusion-webui/blob/dev/modules/sd_unet.py
@@ -172,8 +172,8 @@ class TrtUnet:
 		# Need to check compatability on the fly
 		if self.shape_hash != hash(x.shape):
 			nvtx.range_push("switch_engine")
-			if x.shape[-1] % 64 != 0 or x.shape[-2] % 64 != 0:
-				raise ValueError("Input shape must be divisible by 64 in both dimensions.")
+			if x.shape[-1] % 8 != 0 or x.shape[-2] % 8 != 0:  # not 64 here coz latent
+				raise ValueError("Input shape must be divisible by 8 in both dimensions.")
 			self.switch_engine(feed_dict)
 			self.shape_hash = hash(x.shape)
 			nvtx.range_pop()

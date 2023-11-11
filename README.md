@@ -12,7 +12,8 @@ not beginner-friendly yet, still intended to technical users
 
 **TODO**:
 - [x] conversion script in CLI
-- [ ] add new loader node
+- [x] add new loader node
+- [ ] load model without restart session
 - [ ] conversion in GUI
 - [ ] make it more automatic / user-friendly / compatible with `ComfyUI-Manager`
 - [ ] re-use engine from a1111
@@ -51,15 +52,23 @@ for options see `python convert_unet.py --help`
 
 may take up to ½ h
 
-### launch in ComfyUI
+### usage in ComfyUI
 
-**NOT WORKING YET**
+add node → “advanced” → “loaders” → “load Unet in TensorRT”
 
-ISSUES: how to write node: still looking for possibilities:
-- 1 node with all (unet + sampler) like https://github.com/0xbitches/ComfyUI-LCM/blob/main/nodes.py
-- unet CoreML like https://github.com/aszc-dev/ComfyUI-CoreMLSuite/blob/main/coreml_suite/models.py
-- unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
-- unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
+need to separately load CLIP & VAE
+
+currently need restart python instance to change model (otherwise vram not clean up)
+
+suggestion to download:
+- CLIP:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/text_encoder
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/text_encoder
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/text_encoder
+- VAE:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/vae
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/vae
 
 ## appendix
 
@@ -68,3 +77,9 @@ reference: https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
 ???
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
+
+how to write node:
+- 1 node with all (unet + sampler) like https://github.com/0xbitches/ComfyUI-LCM/blob/main/nodes.py
+- unet CoreML like https://github.com/aszc-dev/ComfyUI-CoreMLSuite/blob/main/coreml_suite/models.py
+- unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
+- unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
