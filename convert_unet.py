@@ -34,11 +34,11 @@ def parseArgs():
 	parser.add_argument("--width_min", type=int, help="default 768 if sdxl else 512")
 	parser.add_argument("--width_opt", type=int, help="default 768 if sdxl else 512")
 	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768")
-	parser.add_argument("--token_count_min", type=int, default=75, help="default 75")
+	parser.add_argument("--token_count_min", type=int, default=75, help="default 75, cannot go lower")
 	parser.add_argument("--token_count_opt", type=int, default=75, help="default 75")
 	parser.add_argument("--token_count_max", type=int, default=150, help="default 150")
 	parser.add_argument("--force_export", action="store_true")
-	parser.add_argument("--static_shapes", action="store_true")
+	parser.add_argument("--static_shapes", action="store_true", help="may cause weird error (?) if enable")
 	parser.add_argument("--float32", action="store_true")
 	return parser.parse_args()
 
@@ -56,7 +56,7 @@ def get_config_from_checkpoint(ckpt_path: str) -> dict:
 			model.load_model_weights(sd, temp_str)
 			return {
 				"model": model.diffusion_model,
-				"sd_ver": model_config.__qualname__,
+				"baseline_model": model_config.__qualname__,
 				"unet_hidden_dim": unet_config["in_channels"]
 			}
 
@@ -69,30 +69,30 @@ if __name__ == "__main__":
 		args.float32 = True
 		print("FP16 has been disabled because your GPU does not support it.")
 
-	version = ckpt_config["sd_ver"]
-	print(f"detected base model version: {version}")
+	baseline_model = ckpt_config["baseline_model"]
+	print(f"detected baseline model version: {baseline_model}")
 
-	if version in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
+	if baseline_model in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
 		if args.height_min is None: args.height_min = 512
 		if args.height_opt is None: args.height_opt = 512
 		if args.height_max is None: args.height_max = 768
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	elif version == "SDXL":
+	elif baseline_model == "SDXL":
 		if args.height_min is None: args.height_min = 768
 		if args.height_opt is None: args.height_opt = 1024
 		if args.height_max is None: args.height_max = 1024
 		if args.width_min is None: args.width_min = 768
 		if args.width_opt is None: args.width_opt = 1024
 		if args.width_max is None: args.width_max = 1024
-	elif version in ["SDXLRefiner", "SSD1B"]:
-		raise ValueError(f"{version} not yet supported")
+	elif baseline_model in ["SDXLRefiner", "SSD1B"]:
+		raise ValueError(f"{baseline_model} not yet supported")
 	else:
-		raise ValueError("cannot detect sd base model version from ckpt")
+		raise ValueError("cannot detect baseline model version from ckpt")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:
-		raise ValueError("height and width have to be divisible by 64")
+		raise ValueError("height and width must be divisible by 64")
 	if not (args.height_min <= args.height_opt <= args.height_max and args.width_min <= args.width_opt <= args.width_max):
 		raise ValueError("need min ≤ opt ≤ max")
 	print(
@@ -100,10 +100,11 @@ if __name__ == "__main__":
 		f"- {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
 		f"- {args.height_min=}, {args.height_opt=}, {args.height_max=}",
 		f"- {args.width_min=}, {args.width_opt=}, {args.width_max=}",
+		f"- {args.token_count_min=}, {args.token_count_opt=}, {args.token_count_max=}",
 		sep="\n    ", end="\n\n"
 	)
 
-	if args.output_name is None:
+	if args.output_name is None:  # default to ckpt file name
 		args.output_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
 	onnx_filename, onnx_path = modelmanager.get_onnx_path(args.output_name)
 	print(f"Exporting {args.output_name} to TensorRT")
@@ -119,11 +120,11 @@ if __name__ == "__main__":
 	if args.static_shapes:
 		min_textlen = max_textlen = opt_textlen
 
-	if version in ["SDXLRefiner", "SDXL"]:
+	if baseline_model in ["SDXLRefiner", "SDXL"]:
 		pipeline = PIPELINE_TYPE.SD_XL_BASE
 		diable_optimizations = True
 		modelobj = OAIUNetXL(
-			version,
+			baseline_model,
 			pipeline,
 			fp16=not args.float32,
 			device="cuda",
@@ -136,7 +137,7 @@ if __name__ == "__main__":
 	else:
 		diable_optimizations = False
 		modelobj = OAIUNet(
-			version,
+			baseline_model,
 			pipeline,
 			fp16=not args.float32,
 			device="cuda",
@@ -148,28 +149,22 @@ if __name__ == "__main__":
 		)
 
 	profile = modelobj.get_input_profile(
-		args.batch_min,
-		args.batch_opt,
-		args.batch_max,
-		args.height_min,
-		args.height_opt,
-		args.height_max,
-		args.width_min,
-		args.width_opt,
-		args.width_max,
+		args.batch_min, args.batch_opt, args.batch_max,
+		args.height_min, args.height_opt, args.height_max,
+		args.width_min, args.width_opt, args.width_max,
 		args.static_shapes,
 	)
 	print(profile)
 
 	if not os.path.exists(onnx_path):
-		print("No ONNX file found. Exporting ONNX...")
+		print("No ONNX file found. Exporting ONNX …")
 		export_onnx(
 			ckpt_config["model"],
 			onnx_path,
-			is_sdxl=version in ["SDXLRefiner", "SDXL"],
+			is_sdxl=baseline_model in ["SDXLRefiner", "SDXL"],
 			modelobj=modelobj,
 			profile=profile,
-			diable_optimizations=diable_optimizations
+			disable_optimizations=diable_optimizations
 		)
 		print("Exported to ONNX.")
 
@@ -180,7 +175,7 @@ if __name__ == "__main__":
 	torch.cuda.empty_cache()
 
 	if not os.path.exists(trt_path) or args.force_export:
-		print("Building TensorRT engine... This can take a while, please check the progress in the terminal.")
+		print("Building TensorRT engine… This can take a while.")
 		ret = export_trt(trt_path, onnx_path, timing_cache, profile=profile, use_fp16=not args.float32)
 		if ret:
 			print("Export Failed due to unknown reason.")
@@ -192,7 +187,7 @@ if __name__ == "__main__":
 				profile,
 				args.static_shapes,
 				fp32=args.float32,
-				diffusion_model=version,
+				baseline_model=baseline_model,  # breaking change incompatible A1111
 				inpaint=ckpt_config["unet_hidden_dim"] > 4,
 				refit=True,
 				vram=0,

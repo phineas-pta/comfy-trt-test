@@ -1,40 +1,58 @@
-# comfy-trt-test
+# attempt to use TensorRT with ComfyUI
 
-failed attempt to use TensorRT with ComfyUI
-
-**NOT WORKING YET**
-
-best optimized for RTX 20xx-30xx-40xx
+best suited for RTX 20xx-30xx-40xx
 
 not automatic yet, do not use `ComfyUI-Manager` to install !!!
 
 not beginner-friendly yet, still intended to technical users
 
-**TODO**:
+i only tested baseline models, need further testing for inpaint or complex workflow
+- ✅ SD 1.5 works
+- ⚠️ SD 2.1 gives rubbish images, need to investigate
+- 🚫 SDXL throws error: need to find out how to use CLIP properly
+
+## TODO
+
 - [x] conversion script in CLI
 - [x] add new loader node
-- [ ] load model without restart session
+- [ ] unload model when not in use
 - [ ] conversion in GUI
 - [ ] make it more automatic / user-friendly / compatible with `ComfyUI-Manager`
-- [ ] re-use engine from a1111
+- [ ] multiple profiles per model
 - [ ] onnx constant folding error (maybe float16 problem)
 - [ ] progress bar when conversion (need tensorrt v9)
 - [ ] lora & controlnet: lowest priority until they can independently compile without checkpoint
+- [ ] ~~re-use engine from A1111~~ (breaking change incompatible with A1111)
 
-## instructions
+## 1️⃣ download baseline model CLIP & VAE
 
-### installation
+need ComfyUI version later than commit `1ffa885`
 
+here links to float16 version, to put into folder `models/`:
+- CLIP:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/text_encoder/model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/text_encoder/model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder/model.fp16.safetensors (base)
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder_2/model.fp16.safetensors (refiner)
+- VAE:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+
+## 2️⃣ install python dependencies
+
+open ComfyUI python env
 ```
 pip install colored onnx
 pip install onnx-graphsurgeon polygraphy --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
+install TensorRT:
 - on linux: `pip install tensorrt`
 - on windows: follow my guide to install TensorRT & python wheel: https://github.com/phineas-pta/NVIDIA-win/blob/main/NVIDIA-win.md
 - alternatively, use the pre-release version: `pip install --pre tensorrt==9.0.1.post11.dev4 --extra-index-url https://pypi.nvidia.com --no-cache-dir`
 
-navigate console to `custom_nodes/` and clone repo `git clone https://github.com/phineas-pta/comfy-trt-test`
+navigate console to folder `custom_nodes/` and git clone this repo
 
 on windows need additional steps:
 ```batchfile
@@ -43,38 +61,53 @@ git update-index --skip-worktree timing_cache_win_cc75.cache
 git update-index --skip-worktree timing_cache_win_cc86.cache
 git update-index --skip-worktree timing_cache_win_cc89.cache
 ```
+on windows + cuda < 12.3 also do `set CUDA_MODULE_LOADING=LAZY` can prevent some weird errors
 
-### convert checkpoint to tensorrt engine
+## 3️⃣ convert checkpoint to tensorrt engine
 
-navigate console to `comfy-trt-test/`
+navigate console to folder `comfy-trt-test/`
 
-for options see `python convert_unet.py --help`
+for how to use: see `python convert_unet.py --help`
 
-may take up to ½ h
+may take roughly 10’ (SD 1.5-2.1) up to 30’ (SDXL) — no progress bar like A1111 yet
 
-### usage in ComfyUI
+SDXL need at least 8 GB VRAM to convert (refiner not supported)
+
+for now 1 model can only have 1 profile, no LoRA nor ControlNet support yet
+
+⚠️ incompatible with TensorRT engines converted in A1111
+
+files created in `comfy-trt-test/`
+
+## 4️⃣ usage in ComfyUI
 
 add node → “advanced” → “loaders” → “load Unet in TensorRT”
 
-need to separately load CLIP & VAE
+need to separately load CLIP & VAE according to baseline model
 
-currently need restart python instance to change model (otherwise vram not clean up)
+if change model REMEMBER to change CLIP & VAE accordingly
 
-suggestion to download:
-- CLIP:
-  - https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/text_encoder
-  - https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/text_encoder
-  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/text_encoder
-- VAE:
-  - https://huggingface.co/runwayml/stable-diffusion-v1-5/tree/main/vae
-  - https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae
-  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/tree/main/vae
+⚠️ VRAM not released when node not in use, need restart python session to clear
 
-## appendix
+## 🗿 frequently seen error messages
 
-reference: https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
+when convert checkpoint to tensorrt engine, those messages are not critical if engine can be created:
+```
+[W:onnxruntime:, constant_folding.cc:212 onnxruntime::ConstantFolding::ApplyImpl] Could not find a CPU kernel and hence can't constant fold Sqrt node …
+[libprotobuf WARNING ***\externals\protobuf\3.0.0\src\google\protobuf\io\coded_stream.cc:604] Reading dangerously large protocol message. If the message turns out to be larger than 2147483647 bytes, parsing will be halted for security reasons. To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
+[libprotobuf WARNING ***\externals\protobuf\3.0.0\src\google\protobuf\io\coded_stream.cc:81] The total number of bytes read was …
+[E] 2: [virtualMemoryBuffer.cpp::nvinfer1::StdVirtualMemoryBufferImpl::resizePhysical::140] Error Code 2: OutOfMemory (no further information)
+```
 
-???
+when using in ComfyUI, if prompt too short (need at least 75-77 tokens) then this message is shown:
+```
+[E] 3: [engine.cpp::nvinfer1::rt::Engine::getProfileDimensions::1127] Error Code 3: API Usage Error (Parameter check failed at: engine.cpp::nvinfer1::rt::Engine::getProfileDimensions::1127, condition: bindingIsInput(bindingIndex))
+```
+
+## 📑 appendix
+
+original implementation:
+- https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
 

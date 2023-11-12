@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/utilities.py
+# STATUS: ok i guess
 
 # Copyright 2022 The HuggingFace Inc. team.
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -25,7 +26,7 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from polygraphy.backend.common import bytes_from_path
-from polygraphy import util
+from polygraphy import util as polyutil
 from polygraphy.backend.trt import (
 	ModifyNetworkOutputs,
 	Profile,
@@ -34,12 +35,15 @@ from polygraphy.backend.trt import (
 	network_from_onnx_path,
 	save_engine,
 )
+from polygraphy.logger import G_LOGGER
 import tensorrt as trt
 import torch
 from torch.cuda import nvtx
 from safetensors.numpy import save_file, load_file
 
+
 TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
+G_LOGGER.module_severity = G_LOGGER.ERROR
 
 # Map of numpy dtype -> torch dtype
 numpy_to_torch_dtype_dict = {
@@ -279,14 +283,15 @@ class Engine:
 
 		builder = network[0]
 		config = builder.create_builder_config()
+		# config.progress_monitor = TQDMProgressMonitor() # need tensorrt v9
 
 		config.set_flag(trt.BuilderFlag.FP16) if fp16 else None
 		config.set_flag(trt.BuilderFlag.REFIT) if enable_refit else None
 
 		cache = None
 		try:
-			with util.LockFile(timing_cache):
-				timing_cache_data = util.load_file(timing_cache, description="tactic timing cache")
+			with polyutil.LockFile(timing_cache):
+				timing_cache_data = polyutil.load_file(timing_cache, description="tactic timing cache")
 				cache = config.create_timing_cache(timing_cache_data)
 		except FileNotFoundError:
 			logging.warning(f"Timing cache file {timing_cache} not found, falling back to empty timing cache.")
@@ -319,7 +324,6 @@ class Engine:
 	def activate(self, reuse_device_memory=None):
 		if reuse_device_memory:
 			self.context = self.engine.create_execution_context_without_device_memory()
-			# self.context.device_memory = reuse_device_memory
 		else:
 			self.context = self.engine.create_execution_context()
 

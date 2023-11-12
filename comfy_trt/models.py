@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/models.py
+# STATUS: ok i guess
 
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
@@ -19,9 +20,13 @@
 import os
 import tempfile
 import onnx
-from polygraphy.backend.onnx.loader import fold_constants
-import torch
 import onnx_graphsurgeon as gs
+import torch
+from polygraphy.backend.onnx.loader import fold_constants
+from polygraphy.logger import G_LOGGER
+
+
+G_LOGGER.module_severity = G_LOGGER.ERROR
 
 
 class Optimizer:
@@ -139,12 +144,7 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		self.min_batch = 1
 		self.max_batch = max_batch_size
 		self.min_image_shape = 256  # min image resolution: 256x256
-		if version == "SD15":
-			self.max_image_shape = 512
-		elif version in ["SD20", "SD21UnclipL", "SD21UnclipH"]:
-			self.max_image_shape = 768
-		elif version in ["SDXLRefiner", "SDXL"]:
-			self.max_image_shape = 1024
+		self.max_image_shape = 512 if version == "SD15" else 1024
 		self.min_latent_shape = self.min_image_shape // 8
 		self.max_latent_shape = self.max_image_shape // 8
 
@@ -690,7 +690,7 @@ class OAIUNetXL(BaseModelBis):
 		text_optlen=77,
 		unet_dim=4,
 		time_dim=6,
-		num_classes=2816,
+		num_classes=2816, # 2560 for refiner
 		controlnet=None,
 	):
 		super(OAIUNetXL, self).__init__(

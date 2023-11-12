@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/model_manager.py
+# STATUS: ok i guess
 
 import json
 import os
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 import torch
 
 from .exporter import get_cc
+
 
 BASE_PATH = os.path.dirname(os.path.realpath(__file__))
 ONNX_MODEL_DIR = os.path.join(BASE_PATH, "Unet-onnx")
@@ -32,7 +34,6 @@ class ModelManager:
 			logging.warning("Model file does not exist. Creating new one.")
 		else:
 			self.all_models = self.read_json()
-
 		self.update()
 
 	@staticmethod
@@ -77,8 +78,8 @@ class ModelManager:
 
 		self.write_json()
 
-	def add_entry(self, model_name, profile, static_shapes, fp32, diffusion_model, inpaint, refit, vram, unet_hidden_dim, lora):
-		config = ModelConfig(profile, static_shapes, fp32, diffusion_model, inpaint, refit, lora, vram, unet_hidden_dim)
+	def add_entry(self, model_name, profile, static_shapes, fp32, baseline_model, inpaint, refit, vram, unet_hidden_dim, lora):
+		config = ModelConfig(profile, static_shapes, fp32, baseline_model, inpaint, refit, lora, vram, unet_hidden_dim)
 		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
 
 		base_model_name = f"{model_name}"
@@ -91,8 +92,8 @@ class ModelManager:
 
 		self.write_json()
 
-	def add_lora_entry(self, base_model, lora_name, trt_lora_path, fp32, diffusion_model, inpaint, vram, unet_hidden_dim):
-		config = ModelConfig([[], [], []], False, fp32, diffusion_model, inpaint, True, True, vram, unet_hidden_dim)
+	def add_lora_entry(self, base_model, lora_name, trt_lora_path, fp32, baseline_model, inpaint, vram, unet_hidden_dim):
+		config = ModelConfig([[], [], []], False, fp32, baseline_model, inpaint, True, True, vram, unet_hidden_dim)
 		self.all_models[self.cc][lora_name] = [{"filepath": trt_lora_path, "base_model": base_model, "config": config}]
 		self.write_json()
 
@@ -125,12 +126,23 @@ class ModelManager:
 		)
 		return cache
 
-	def get_valid_models(self, base_model: str, feed_dict: dict):
+	def get_valid_models_from_dict(self, base_model: str, feed_dict: dict):
 		valid_models = []
 		distances = []
 		models = self.available_models()
 		for model in models[base_model]:
-			valid, distance = model["config"].is_compatible(feed_dict)
+			valid, distance = model["config"].is_compatible_from_dict(feed_dict)
+			if valid:
+				valid_models.append(model)
+				distances.append(distance)
+		return valid_models, distances
+
+	def get_valid_models(self, base_model: str, width: int, height: int, batch_size: int, max_embedding: int):
+		valid_models = []
+		distances = []
+		models = self.available_models()
+		for model in models[base_model]:
+			valid, distance = model["config"].is_compatible(width, height, batch_size, max_embedding)
 			if valid:
 				valid_models.append(model)
 				distances.append(distance)
@@ -142,14 +154,14 @@ class ModelConfig:
 	profile: dict
 	static_shapes: bool
 	fp32: bool
-	diffusion_model: str  # new entry to save model info, for values see comfy/supported_models.py
+	baseline_model: str  # save model info, for values see comfy/supported_models.py, breaking change incompatible A1111
 	inpaint: bool
 	refit: bool
 	lora: bool
 	vram: int
 	unet_hidden_dim: int = 4
 
-	def is_compatible(self, feed_dict: dict):
+	def is_compatible_from_dict(self, feed_dict: dict):
 		distance = 0
 		for k, v in feed_dict.items():
 			_min, _opt, _max = self.profile[k]
@@ -160,6 +172,33 @@ class ModelConfig:
 			if torch.any(r_min < 0) or torch.any(r_max < 0):
 				return False, distance
 			distance += r_opt.sum() + 0.5 * (r_max.sum() + 0.5 * r_min.sum())
+		return True, distance
+
+	def is_compatible(self, width: int, height: int, batch_size: int, max_embedding: int):
+		distance = 0
+		sample = self.profile["sample"]
+		embedding = self.profile["encoder_hidden_states"]
+
+		batch_size *= 2
+		width //=  8
+		height //= 8
+
+		_min, _opt, _max = sample
+		_min_em, _opt_em, _max_em = embedding
+		if (
+			_min[0] > batch_size or _max[0] < batch_size
+			or _min[2] > height or _max[2] < height
+			or _min[3] > width or _max[3] < width
+			or _min_em[1] > max_embedding or _max_em[1] < max_embedding
+		):
+			return False, distance
+
+		distance = (
+			abs(_opt[0] - batch_size)
+			+ abs(_opt[2] - height)
+			+ abs(_opt[3] - width)
+			+ 0.5 * (abs(_max[2] - height) + abs(_max[3] - width))
+		)
 		return True, distance
 
 
