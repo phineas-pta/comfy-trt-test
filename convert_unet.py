@@ -10,7 +10,6 @@ import gc
 import torch
 
 from comfy_trt.exporter import export_onnx, export_trt
-from comfy_trt.utilities import PIPELINE_TYPE
 from comfy_trt.models import OAIUNet, OAIUNetXL
 from comfy_trt.model_manager import modelmanager, cc_major
 
@@ -45,19 +44,21 @@ def parseArgs():
 
 def get_config_from_checkpoint(ckpt_path: str) -> dict:
 	"""see comfy/sd.py >>> load_checkpoint_guess_config"""
-	temp_str = "model.diffusion_model."
+	tmp0 = "model.diffusion_model."
 	sd = load_torch_file(ckpt_path)
-	parameters = calculate_parameters(sd, temp_str)
+	parameters = calculate_parameters(sd, tmp0)
 	unet_dtype = get_unet_dtype(model_params=parameters)
-	unet_config = detect_unet_config(sd, temp_str, unet_dtype)
+	unet_config = detect_unet_config(sd, tmp0, unet_dtype)
 	for model_config in LIST_MODELS:
 		if model_config.matches(unet_config):
-			model = model_config(unet_config).get_model(sd, temp_str, device="cuda")
-			model.load_model_weights(sd, temp_str)
+			tmp1 = model_config(unet_config)
+			model = tmp1.get_model(sd, tmp0, device="cuda")
+			model.load_model_weights(sd, tmp0)
 			return {
 				"model": model.diffusion_model,
 				"baseline_model": model_config.__qualname__,
-				"unet_hidden_dim": unet_config["in_channels"]
+				# "comfy_model_type": tmp1.model_type(sd, tmp0),  # TODO: not reliable with SD v2
+				"unet_hidden_dim": unet_config["in_channels"],
 			}
 
 
@@ -71,6 +72,7 @@ if __name__ == "__main__":
 
 	baseline_model = ckpt_config["baseline_model"]
 	print(f"detected baseline model version: {baseline_model}")
+	is_sdxl = baseline_model in ["SDXL", "SDXLRefiner"]
 
 	if baseline_model in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
 		if args.height_min is None: args.height_min = 512
@@ -110,22 +112,16 @@ if __name__ == "__main__":
 	print(f"Exporting {args.output_name} to TensorRT")
 	timing_cache = modelmanager.get_timing_cache()
 
-	pipeline = PIPELINE_TYPE.TXT2IMG
-	if ckpt_config["unet_hidden_dim"] > 4:
-		pipeline = PIPELINE_TYPE.INPAINT
-
 	min_textlen = (args.token_count_min // 75) * 77
 	opt_textlen = (args.token_count_opt // 75) * 77
 	max_textlen = (args.token_count_max // 75) * 77
 	if args.static_shapes:
 		min_textlen = max_textlen = opt_textlen
 
-	if baseline_model in ["SDXLRefiner", "SDXL"]:
-		pipeline = PIPELINE_TYPE.SD_XL_BASE
+	if is_sdxl:
 		diable_optimizations = True
 		modelobj = OAIUNetXL(
 			baseline_model,
-			pipeline,
 			fp16=not args.float32,
 			device="cuda",
 			verbose=False,
@@ -138,7 +134,6 @@ if __name__ == "__main__":
 		diable_optimizations = False
 		modelobj = OAIUNet(
 			baseline_model,
-			pipeline,
 			fp16=not args.float32,
 			device="cuda",
 			verbose=False,
@@ -161,7 +156,7 @@ if __name__ == "__main__":
 		export_onnx(
 			ckpt_config["model"],
 			onnx_path,
-			is_sdxl=baseline_model in ["SDXLRefiner", "SDXL"],
+			is_sdxl=is_sdxl,
 			modelobj=modelobj,
 			profile=profile,
 			disable_optimizations=diable_optimizations
@@ -170,6 +165,7 @@ if __name__ == "__main__":
 
 	trt_engine_filename, trt_path = modelmanager.get_trt_path(args.output_name, profile, args.static_shapes)
 
+	# claim VRAM for TensorRT
 	del ckpt_config["model"]
 	gc.collect()
 	torch.cuda.empty_cache()

@@ -51,7 +51,7 @@ class ModelManager:
 				dim_hash.append("x".join([str(x) for x in v[i]]))
 			profile_hash.append(k + "=" + "+".join(dim_hash))
 
-		# profile_hash = "-".join(profile_hash) # go into file name below if wanted
+		# profile_hash = "-".join(profile_hash)  # need shorter hash coz windows file path length limit
 		trt_filename = ("_".join([model_name, self.cc]) + ".trt")
 		trt_path = os.path.join(TRT_MODEL_DIR, trt_filename)
 

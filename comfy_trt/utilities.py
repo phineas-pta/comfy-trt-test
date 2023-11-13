@@ -19,7 +19,6 @@
 # See the License for the specific language governing permissions and limitations under the License.
 
 from collections import OrderedDict
-from enum import Enum, auto
 import logging
 import copy
 import numpy as np
@@ -65,32 +64,6 @@ else:
 
 # Map of torch dtype -> numpy dtype
 torch_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_torch_dtype_dict.items()}
-
-
-class PIPELINE_TYPE(Enum):
-	TXT2IMG = auto()
-	IMG2IMG = auto()
-	INPAINT = auto()
-	SD_XL_BASE = auto()
-	SD_XL_REFINER = auto()
-
-	def is_txt2img(self):
-		return self == self.TXT2IMG
-
-	def is_img2img(self):
-		return self == self.IMG2IMG
-
-	def is_inpaint(self):
-		return self == self.INPAINT
-
-	def is_sd_xl_base(self):
-		return self == self.SD_XL_BASE
-
-	def is_sd_xl_refiner(self):
-		return self == self.SD_XL_REFINER
-
-	def is_sd_xl(self):
-		return self.is_sd_xl_base() or self.is_sd_xl_refiner()
 
 
 class Engine:
@@ -335,6 +308,7 @@ class Engine:
 				shape = shape_dict[binding].shape
 			else:
 				shape = self.context.get_binding_shape(idx)
+				shape = tuple(abs(x) for x in shape)  # TODO: find out why sometimes negative values
 			dtype = trt.nptype(self.engine.get_binding_dtype(binding))
 			if self.engine.binding_is_input(binding):
 				self.context.set_binding_shape(idx, shape)

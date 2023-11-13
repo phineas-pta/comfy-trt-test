@@ -7,8 +7,7 @@ not automatic yet, do not use `ComfyUI-Manager` to install !!!
 not beginner-friendly yet, still intended to technical users
 
 i only tested baseline models, need further testing for inpaint or complex workflow
-- ✅ SD 1.5 works
-- ⚠️ SD 2.1 gives rubbish images, need to investigate
+- ✅ SD 1.5 & 2.1 work
 - 🚫 SDXL throws error: need to find out how to use CLIP properly
 
 ## TODO
@@ -24,22 +23,9 @@ i only tested baseline models, need further testing for inpaint or complex workf
 - [ ] lora & controlnet: lowest priority until they can independently compile without checkpoint
 - [ ] ~~re-use engine from A1111~~ (breaking change incompatible with A1111)
 
-## 1️⃣ download baseline model CLIP & VAE
+## 1️⃣ install python dependencies
 
 need ComfyUI version later than commit `1ffa885`
-
-here links to float16 version, to put into folder `models/`:
-- CLIP:
-  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/text_encoder/model.fp16.safetensors
-  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/text_encoder/model.fp16.safetensors
-  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder/model.fp16.safetensors (base)
-  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder_2/model.fp16.safetensors (refiner)
-- VAE:
-  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
-  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
-  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
-
-## 2️⃣ install python dependencies
 
 open ComfyUI python env
 ```
@@ -63,7 +49,7 @@ git update-index --skip-worktree timing_cache_win_cc89.cache
 ```
 on windows + cuda < 12.3 also do `set CUDA_MODULE_LOADING=LAZY` can prevent some weird errors
 
-## 3️⃣ convert checkpoint to tensorrt engine
+## 2️⃣ convert checkpoint to tensorrt engine
 
 navigate console to folder `comfy-trt-test/`
 
@@ -79,15 +65,20 @@ for now 1 model can only have 1 profile, no LoRA nor ControlNet support yet
 
 files created in `comfy-trt-test/`
 
-## 4️⃣ usage in ComfyUI
+## 3️⃣ usage in ComfyUI
 
 add node → “advanced” → “loaders” → “load Unet in TensorRT”
 
-need to separately load CLIP & VAE according to baseline model
+need to get CLIP & VAE from according checkpoint
 
-if change model REMEMBER to change CLIP & VAE accordingly
+how to select model type:
+- SD 1.5: select `EPS`
+- SD 2.1: select `V_PREDICTION`, but if rubbish result image or inpaint then select `EPS`
+- SDXL: not working yet
 
 ⚠️ VRAM not released when node not in use, need restart python session to clear
+
+⚠️ if encounter error then need restart python to use node again
 
 ## 🗿 frequently seen error messages
 
@@ -116,3 +107,17 @@ how to write node:
 - unet CoreML like https://github.com/aszc-dev/ComfyUI-CoreMLSuite/blob/main/coreml_suite/models.py
 - unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
 - unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
+
+where to download separated CLIP & VAE without checkpoint:
+- CLIP:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/text_encoder/model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/text_encoder/model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder/model.fp16.safetensors (base)
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/text_encoder_2/model.fp16.safetensors (refiner)
+- VAE:
+  - https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+  - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/vae/diffusion_pytorch_model.fp16.safetensors
+  - https://huggingface.co/stabilityai/sdxl-vae/blob/main/sdxl_vae.safetensors (float32)
+  - https://huggingface.co/stabilityai/sd-vae-ft-ema-original/blob/main/vae-ft-ema-560000-ema-pruned.safetensors (float32)
+  - https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors (float32)

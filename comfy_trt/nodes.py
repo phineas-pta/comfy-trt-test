@@ -17,7 +17,7 @@
 
 
 import os
-import numpy as np
+from numpy import argmin
 import torch
 from torch.cuda import nvtx
 
@@ -40,14 +40,28 @@ class TRT_Unet_Loader:
 	FUNCTION = "load_trt"
 
 	@classmethod
-	def INPUT_TYPES(cls):
-		return {
-			"required": {
-				"engine_file": (list(LIST_ENGINES.keys()),),
-			}
-		}
+	def INPUT_TYPES(cls): return {"required": {
+		"engine_file": (list(LIST_ENGINES.keys()),),
+		"model_type": (["EPS", "V_PREDICTION"],)
+		# "model" : ("MODEL",),  # test: convert directly in ComfyUI
+		# "batch_min": ("INT", {"default": 1, "min": 1, "max": 16}),
+		# "batch_opt": ("INT", {"default": 1, "min": 1, "max": 16}),
+		# "batch_max": ("INT", {"default": 1, "min": 1, "max": 16}),
+		# "height_min": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
+		# "height_opt": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
+		# "height_max": ("INT", {"default": 768, "min": 256, "max": 2048, "step": 64}),
+		# "width_min": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
+		# "width_opt": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
+		# "width_max": ("INT", {"default": 768, "min": 256, "max": 2048, "step": 64}),
+		# "token_count_min": ("INT", {"default": 75, "min": 75, "max": 750}),
+		# "token_count_opt": ("INT", {"default": 75, "min": 75, "max": 750}),
+		# "token_count_max": ("INT", {"default": 75, "min": 75, "max": 750}),
+		# "force_export": ("BOOLEAN", {"default": False}),
+		# "static_shapes": ("BOOLEAN", {"default": False}),
+		# "use_float32": ("BOOLEAN", {"default": False}),
+	}}
 
-	def load_trt(self, engine_file):
+	def load_trt(self, engine_file, model_type):
 		configs: list = LIST_ENGINES[engine_file]
 		if configs[0]["config"].lora:
 			model_name = configs[0]["base_model"]
@@ -55,13 +69,13 @@ class TRT_Unet_Loader:
 		else:
 			model_name = engine_file
 			lora_path = None
-		return (TrtUnetWrapper_Patch(model_name, configs, lora_path),)
+		return (TrtUnetWrapper_Patch(model_name, model_type, configs, lora_path),)
 
 
 class TrtUnetWrapper_Patch:
 	"""ComfyUI unet patched, see comfy/model_patcher.py"""
-	def __init__(self, model_name: str, configs: list, lora_path: str):
-		self.model = TrtUnetWrapper_Base(model_name, configs, lora_path)
+	def __init__(self, model_name: str, model_type: str, configs: list, lora_path: str):
+		self.model = TrtUnetWrapper_Base(model_name, model_type, configs, lora_path)
 		self.latent_format = self.model.latent_format
 		self.model_sampling = self.model.model_sampling
 		self.current_device = self.offload_device = "cpu"
@@ -83,7 +97,7 @@ class TrtUnetWrapper_Patch:
 		else:
 			return False
 
-	def model_size(self):
+	def model_size(self):  # get file size as workaround
 		return os.stat(self.model.diffusion_model.engine.engine_path).st_size
 
 	def model_patches_to(self, dtype):
@@ -99,18 +113,22 @@ class TrtUnetWrapper_Patch:
 class TrtUnetWrapper_Base:
 	"""ComfyUI unet base, see comfy/model_base.py"""
 
-	def __init__(self, model_name: str, configs: list, lora_path: str):
+	def __init__(self, model_name: str, model_type: str, configs: list, lora_path: str):
 		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
 
 		baseline_model: str = configs[0]["config"].baseline_model
-		print(f"using config from {baseline_model}")
 		for mod in LIST_MODELS:
 			if mod.__qualname__ == baseline_model:
 				self.model_config = mod
 				break
 
+		match model_type:
+			case "EPS":
+				self.model_type = ModelType.EPS
+			case "V_PREDICTION":
+				self.model_type = ModelType.V_PREDICTION
+
 		self.latent_format = self.model_config.latent_format()  # must init here
-		self.model_type = ModelType.EPS
 		self.model_sampling = model_sampling(self.model_config, self.model_type)
 		self.adm_channels = self.model_config.unet_config.get("adm_in_channels", 0)
 		self.inpaint_model: bool = configs[0]["config"].inpaint
@@ -201,9 +219,9 @@ class TrtUnet:
 	def switch_engine(self, feed_dict):
 		valid_models, distances = modelmanager.get_valid_models_from_dict(self.model_name, feed_dict)
 		if len(valid_models) == 0:
-			raise ValueError("No valid profile found.") # TODO: SD SDXL cannot get valid models
+			raise ValueError("No valid profile found.") # TODO: SDXL cannot get valid models
 
-		best = valid_models[np.argmin(distances)]
+		best = valid_models[argmin(distances)]
 		if best["filepath"] == self.loaded_config["filepath"]:
 			return
 		self.deactivate()
