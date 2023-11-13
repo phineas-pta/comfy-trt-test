@@ -100,6 +100,9 @@ class TrtUnetWrapper_Patch:
 	def model_size(self):  # get file size as workaround
 		return os.stat(self.model.diffusion_model.engine.engine_path).st_size
 
+	def memory_required(self, input_shape):
+		return self.model.memory_required(input_shape=input_shape)
+
 	def model_patches_to(self, dtype):
 		pass
 
@@ -162,6 +165,10 @@ class TrtUnetWrapper_Base:
 
 	def process_latent_out(self, latent):
 		return self.latent_format.process_out(latent)
+
+	def memory_required(self, input_shape):  # regularly watch comfy to update this formula
+		area = input_shape[0] * input_shape[2] * input_shape[3]
+		return (area * .6 / .9 + 1024) * 1024**2
 
 
 class TrtUnet:

@@ -3,6 +3,7 @@
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/model_manager.py
 # STATUS: ok i guess
 
+import hashlib
 import json
 import os
 import logging
@@ -51,8 +52,9 @@ class ModelManager:
 				dim_hash.append("x".join([str(x) for x in v[i]]))
 			profile_hash.append(k + "=" + "+".join(dim_hash))
 
-		# profile_hash = "-".join(profile_hash)  # need shorter hash coz windows file path length limit
-		trt_filename = ("_".join([model_name, self.cc]) + ".trt")
+		# shorter hash coz windows file path length limit
+		hash_str = hashlib.blake2b("-".join(profile_hash).encode("utf-8"), digest_size=16).hexdigest()  # 16 digest = 32 char (original >110 char)
+		trt_filename = model_name + "_" + hash_str + ".trt"
 		trt_path = os.path.join(TRT_MODEL_DIR, trt_filename)
 
 		return trt_filename, trt_path
@@ -99,7 +101,7 @@ class ModelManager:
 
 	def write_json(self):
 		with open(self.model_file, "w") as f:
-			json.dump(self.all_models, f, indent=4, cls=ModelConfigEncoder)
+			json.dump(self.all_models, f, indent=2, cls=ModelConfigEncoder)
 
 	def read_json(self, encode_config=True):
 		with open(self.model_file, "r") as f:

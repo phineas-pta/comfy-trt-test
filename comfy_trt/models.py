@@ -101,7 +101,7 @@ class Optimizer:
 def get_unet_embedding_dim(version):
 	if version == "SD15":
 		return 768
-	elif version == ["SD20", "SD21UnclipL", "SD21UnclipH"]:
+	elif version in ["SD20", "SD21UnclipL", "SD21UnclipH"]:
 		return 1024
 	elif version == "SDXL":
 		return 2048
@@ -114,23 +114,23 @@ def get_unet_embedding_dim(version):
 class BaseModelBis:  # change name to distingush from existing 1 in comfy
 	def __init__(
 		self,
-		version="SD15",
-		hf_token="",
+		version,
 		device="cuda",
-		verbose=True,
 		fp16=False,
+		verbose=True,
 		max_batch_size=16,
 		text_maxlen=77,
+		text_optlen=77,
+		unet_dim=4,
 		embedding_dim=768,
+		controlnet=None,
 	):
 		self.name = self.__class__.__name__
 		self.version = version
-		self.hf_token = hf_token
-		self.hf_safetensor = version in ["SDXL", "SDXLRefiner"]
 		self.device = device
 		self.verbose = verbose
-
 		self.fp16 = fp16
+		self.controlnet = controlnet
 
 		self.min_batch = 1
 		self.max_batch = max_batch_size
@@ -140,6 +140,8 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		self.max_latent_shape = self.max_image_shape // 8
 
 		self.text_maxlen = text_maxlen
+		self.unet_dim = unet_dim
+		self.text_optlen = text_optlen
 		self.embedding_dim = embedding_dim
 		self.extra_output_names = []
 
@@ -233,27 +235,26 @@ class OAIUNet(BaseModelBis):
 		self,
 		version,
 		device="cuda",
+		fp16=True,
 		verbose=True,
-		fp16=False,
 		max_batch_size=16,
 		text_maxlen=77,
 		text_optlen=77,
 		unet_dim=4,
 		controlnet=None,
 	):
-		super(OAIUNet, self).__init__(
-			version,
-			"",
+		super().__init__(
+			version=version,
 			fp16=fp16,
 			device=device,
 			verbose=verbose,
 			max_batch_size=max_batch_size,
 			text_maxlen=text_maxlen,
+			text_optlen=text_optlen,
+			unet_dim=unet_dim,
 			embedding_dim=get_unet_embedding_dim(version),
+			controlnet=controlnet,
 		)
-		self.unet_dim = unet_dim
-		self.controlnet = controlnet
-		self.text_optlen = text_optlen
 
 	def get_input_names(self):
 		if self.controlnet is None:
@@ -375,8 +376,8 @@ class OAIUNetXL(BaseModelBis):
 	def __init__(
 		self,
 		version,
-		fp16=False,
 		device="cuda",
+		fp16=True,
 		verbose=True,
 		max_batch_size=16,
 		text_maxlen=77,
@@ -386,20 +387,20 @@ class OAIUNetXL(BaseModelBis):
 		num_classes=2816, # 2560 for refiner
 		controlnet=None,
 	):
-		super(OAIUNetXL, self).__init__(
-			version,
-			"",
+		super().__init__(
+			version=version,
 			fp16=fp16,
 			device=device,
 			verbose=verbose,
 			max_batch_size=max_batch_size,
 			text_maxlen=text_maxlen,
+			text_optlen=text_optlen,
+			unet_dim=unet_dim,
 			embedding_dim=get_unet_embedding_dim(version),
+			controlnet=controlnet,
 		)
-		self.unet_dim = unet_dim
 		self.time_dim = time_dim
 		self.num_classes = num_classes
-		self.text_optlen = text_optlen
 
 	def get_input_names(self):
 		return ["sample", "timesteps", "encoder_hidden_states", "y"]

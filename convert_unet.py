@@ -26,16 +26,16 @@ def parseArgs():
 	parser.add_argument("--output_name", help=".onnx & .trt file name, default to ckpt file name")
 	parser.add_argument("--batch_min", type=int, default=1, help="default 1")
 	parser.add_argument("--batch_opt", type=int, default=1, help="default 1")
-	parser.add_argument("--batch_max", type=int, default=1, help="can go up to 4")
-	parser.add_argument("--height_min", type=int, help="default 768 if sdxl else 512")
+	parser.add_argument("--batch_max", type=int, default=1, help="limit 16")
+	parser.add_argument("--height_min", type=int, help="default 768 if sdxl else 512, limit 256")
 	parser.add_argument("--height_opt", type=int, help="default 1024 if sdxl else 512")
-	parser.add_argument("--height_max", type=int, help="default 1024 if sdxl else 768")
-	parser.add_argument("--width_min", type=int, help="default 768 if sdxl else 512")
+	parser.add_argument("--height_max", type=int, help="default 1024 if sdxl else 768, limit 2048")
+	parser.add_argument("--width_min", type=int, help="default 768 if sdxl else 512, limit 256")
 	parser.add_argument("--width_opt", type=int, help="default 768 if sdxl else 512")
-	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768")
+	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768, limit 2048")
 	parser.add_argument("--token_count_min", type=int, default=75, help="default 75, cannot go lower")
 	parser.add_argument("--token_count_opt", type=int, default=75, help="default 75")
-	parser.add_argument("--token_count_max", type=int, default=150, help="default 150")
+	parser.add_argument("--token_count_max", type=int, default=150, help="default 150, limit 750")
 	parser.add_argument("--force_export", action="store_true")
 	parser.add_argument("--static_shapes", action="store_true", help="may cause weird error (?) if enable")
 	parser.add_argument("--float32", action="store_true")
@@ -97,6 +97,8 @@ if __name__ == "__main__":
 		raise ValueError("height and width must be divisible by 64")
 	if not (args.height_min <= args.height_opt <= args.height_max and args.width_min <= args.width_opt <= args.width_max):
 		raise ValueError("need min ≤ opt ≤ max")
+	if args.height_min < 256 or args.height_max > 2048 or args.width_min < 256 or args.width_max > 2048:
+		raise ValueError("height and width out of limit")
 	print(
 		"[I] size & shape parameters:",
 		f"- {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
@@ -121,7 +123,7 @@ if __name__ == "__main__":
 	if is_sdxl:
 		diable_optimizations = True
 		modelobj = OAIUNetXL(
-			baseline_model,
+			version=baseline_model,
 			fp16=not args.float32,
 			device="cuda",
 			verbose=False,
@@ -133,7 +135,7 @@ if __name__ == "__main__":
 	else:
 		diable_optimizations = False
 		modelobj = OAIUNet(
-			baseline_model,
+			version=baseline_model,
 			fp16=not args.float32,
 			device="cuda",
 			verbose=False,
