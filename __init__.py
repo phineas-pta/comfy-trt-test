@@ -2,7 +2,7 @@
 
 """
 @author: PTA
-@title: comfy trt test
+@title: TensorRT with ComfyUI (work-in-progress)
 @nickname: comfy trt test
 @description: attempt to use TensorRT with ComfyUI, not yet compatible with ComfyUI-Manager, see README for instructions
 """

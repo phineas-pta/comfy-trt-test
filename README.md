@@ -2,14 +2,19 @@
 
 best suited for RTX 20xx-30xx-40xx
 
-not automatic yet, do not use `ComfyUI-Manager` to install !!!
+not automatic yet, do not use `ComfyUI-Manager` to install !!! read below instructions to install
 
-not beginner-friendly yet, still intended to technical users
+instructions not beginner-friendly yet, still intended for advanced users
 
-i only tested baseline models, need further testing for inpaint or complex workflow
+i only tested baseline models (SD 1.5 - 2.1 - XL work) with simplest workflow, need further testing for complex workflow
+
+no lora support yet as i wait for better upstream update coz current way of using lora is too cumbersome (only 1 lora at strength 1.0)
+
+very limited usefulness as no additionnal features supported in upstream (controlnet, ipadapter, hypernetwork, freeu, etc.)
 
 ## TODO
 
+work-in-progress
 - [x] conversion script in CLI
 - [x] add new loader node
 - [ ] unload model when not in use
@@ -22,7 +27,9 @@ i only tested baseline models, need further testing for inpaint or complex workf
 
 ## 1️⃣ install python dependencies
 
-need ComfyUI version later than commit `f12ec55`
+i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
+
+need CUDA version ≥ 11 (driver version > 450) & ComfyUI version later than commit `f12ec55`
 
 open ComfyUI python env
 ```
@@ -50,11 +57,13 @@ on windows + cuda < 12.3 also do `set CUDA_MODULE_LOADING=LAZY` can prevent some
 
 navigate console to folder `comfy-trt-test/`
 
-convert with default profile: `python convert_unet.py --ckpt_path <checkpoint file path>`
+build engine with default profile: `python convert_unet.py --ckpt_path <checkpoint file path>`
 
 for more options: see `python convert_unet.py --help`
 
 example with 8 GB VRAM + SD 1.5 or 2.1: `--batch_max 4 --height_min 256 --width_min 256`
+
+1 model can be converted multiple times with different profiles (but take lot more disk space)
 
 may take roughly 10’ (SD 1.5 & 2.1) up to 30’ (SDXL) — no progress bar like A1111 yet
 
@@ -72,16 +81,19 @@ add node → “advanced” → “loaders” → “load Unet in TensorRT” �
 
 need to get CLIP & VAE from according checkpoint
 
+⚠️ this node doesn’t respect any comfy settings about vram/memory
+
 how to select model type:
 - SD 1.5: select `EPS`
-- SD 2.1: select `V_PREDICTION`, but if rubbish result image or inpaint then select `EPS`
-- SDXL: select `EPS`, but if rubbish result image or inpaint then select `V_PREDICTION`
+- SD 2.1: select `V_PREDICTION`, but **if inpaint** or rubbish result image then select `EPS`
+- SDXL base: select `EPS`, but if rubbish result image then select `V_PREDICTION`
+- SDXL refiner: select `EPS`
 
 ⚠️ VRAM not released when node not in use, need restart python session to clear
 
 ## 🗿 frequently seen error messages
 
-when convert checkpoint to tensorrt engine, those messages below are not critical if engine can be created:
+when convert checkpoint to tensorrt engine, those errors below are not critical if engine can be created:
 ```
 [W:onnxruntime:, constant_folding.cc:212 onnxruntime::ConstantFolding::ApplyImpl] Could not find a CPU kernel and hence can't constant fold Sqrt node …
 [libprotobuf WARNING ***\externals\protobuf\3.0.0\src\google\protobuf\io\coded_stream.cc:604] Reading dangerously large protocol message. If the message turns out to be larger than 2147483647 bytes, parsing will be halted for security reasons. To increase the limit (or to disable these warnings), see CodedInputStream::SetTotalBytesLimit() in google/protobuf/io/coded_stream.h.
@@ -89,20 +101,22 @@ when convert checkpoint to tensorrt engine, those messages below are not critica
 [E] 2: [virtualMemoryBuffer.cpp::nvinfer1::StdVirtualMemoryBufferImpl::resizePhysical::140] Error Code 2: OutOfMemory (no further information)
 ```
 
-when using in ComfyUI, if prompt too short (need at least 75-77 tokens) then this message below is shown:
+when using in ComfyUI, if prompt too short (need at least 75-77 tokens) then this error below is shown, but things still work anyway:
 ```
 [E] 3: [engine.cpp::nvinfer1::rt::Engine::getProfileDimensions::1127] Error Code 3: API Usage Error (Parameter check failed at: engine.cpp::nvinfer1::rt::Engine::getProfileDimensions::1127, condition: bindingIsInput(bindingIndex))
 ```
 
-if see this message below then restart python session
+if see this error below then restart python session
 ```
 AttributeError: 'TrtUnet' object has no attribute 'engine'
 ```
 
+if error `No valid profile found` then engine built with incompatible image resolution (need re-build) or CLIP from checkpoint not correct (select proper checkpoint)
+
 ## 📑 appendix
 
 original implementation:
-- https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT
+- https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT (upstream)
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
 

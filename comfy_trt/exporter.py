@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/exporter.py
+# CHANGE: remove lora
 # STATUS: ok i guess
 
 import logging

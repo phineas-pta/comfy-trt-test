@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/utilities.py
+# CHANGE: remove pipeline & progress bar
 # STATUS: ok i guess
 
 # Copyright 2022 The HuggingFace Inc. team.

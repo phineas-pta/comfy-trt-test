@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/models.py
+# CHANGE: remove unused classes, only keep unet
 # STATUS: ok i guess
 
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
@@ -121,7 +122,7 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		max_batch_size=16,
 		text_maxlen=77,
 		text_optlen=77,
-		unet_dim=4,
+		unet_dim=4,  # 9 for inpaint model
 		embedding_dim=768,
 		controlnet=None,
 	):
@@ -240,7 +241,7 @@ class OAIUNet(BaseModelBis):
 		max_batch_size=16,
 		text_maxlen=77,
 		text_optlen=77,
-		unet_dim=4,
+		unet_dim=4,  # 9 for inpaint model
 		controlnet=None,
 	):
 		super().__init__(
@@ -382,9 +383,9 @@ class OAIUNetXL(BaseModelBis):
 		max_batch_size=16,
 		text_maxlen=77,
 		text_optlen=77,
-		unet_dim=4,
+		unet_dim=4,  # 9 for inpaint model
 		time_dim=6,
-		num_classes=2816, # 2560 for refiner
+		num_classes=2816,  # 2560 for refiner
 		controlnet=None,
 	):
 		super().__init__(

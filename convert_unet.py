@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/ui_trt.py
+# CHANGE: remove lora, make script as CLI command
 # STATUS: ok i guess
 
 import argparse
@@ -29,10 +30,10 @@ def parseArgs():
 	parser.add_argument("--batch_max", type=int, default=1, help="limit 16")
 	parser.add_argument("--height_min", type=int, help="default 768 if sdxl else 512, limit 256")
 	parser.add_argument("--height_opt", type=int, help="default 1024 if sdxl else 512")
-	parser.add_argument("--height_max", type=int, help="default 1024 if sdxl else 768, limit 2048")
+	parser.add_argument("--height_max", type=int, help="default 1024 if sdxl else 768, limit 4096")
 	parser.add_argument("--width_min", type=int, help="default 768 if sdxl else 512, limit 256")
 	parser.add_argument("--width_opt", type=int, help="default 768 if sdxl else 512")
-	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768, limit 2048")
+	parser.add_argument("--width_max", type=int, help="default 1024 if sdxl else 768, limit 4096")
 	parser.add_argument("--token_count_min", type=int, default=75, help="default 75, cannot go lower")
 	parser.add_argument("--token_count_opt", type=int, default=75, help="default 75")
 	parser.add_argument("--token_count_max", type=int, default=150, help="default 150, limit 750")
@@ -81,23 +82,21 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	elif baseline_model == "SDXL":
+	elif is_sdxl:
 		if args.height_min is None: args.height_min = 768
 		if args.height_opt is None: args.height_opt = 1024
 		if args.height_max is None: args.height_max = 1024
 		if args.width_min is None: args.width_min = 768
 		if args.width_opt is None: args.width_opt = 1024
 		if args.width_max is None: args.width_max = 1024
-	elif baseline_model in ["SDXLRefiner", "SSD1B"]:
-		raise ValueError(f"{baseline_model} not yet supported")
 	else:
-		raise ValueError("cannot detect baseline model version from ckpt")
+		raise ValueError(f"{baseline_model} not yet supported")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:
 		raise ValueError("height and width must be divisible by 64")
 	if not (args.height_min <= args.height_opt <= args.height_max and args.width_min <= args.width_opt <= args.width_max):
 		raise ValueError("need min ≤ opt ≤ max")
-	if args.height_min < 256 or args.height_max > 2048 or args.width_min < 256 or args.width_max > 2048:
+	if args.height_min < 256 or args.height_max > 4096 or args.width_min < 256 or args.width_max > 4096:
 		raise ValueError("height and width out of limit")
 	print(
 		"[I] size & shape parameters:",
@@ -131,6 +130,7 @@ if __name__ == "__main__":
 			unet_dim=ckpt_config["unet_hidden_dim"],
 			text_optlen=opt_textlen,
 			text_maxlen=max_textlen,
+			num_classes=2560 if baseline_model == "SDXLRefiner" else 2816,
 		)
 	else:
 		diable_optimizations = False

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/model_manager.py
+# CHANGE: retrieve checkpoint info from comfy
 # STATUS: ok i guess
 
 import hashlib

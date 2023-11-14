@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 # modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/scripts/trt.py
+# CHANGE: wrap TrtUnet to make comfy node
 # STATUS: working but need clean vram to change model
 
 # rabbit hole 0: original unet implementation
@@ -42,17 +43,18 @@ class TRT_Unet_Loader:
 	@classmethod
 	def INPUT_TYPES(cls): return {"required": {
 		"engine_file": (list(LIST_ENGINES.keys()),),
-		"model_type": (["EPS", "V_PREDICTION"],)
-		# "model" : ("MODEL",),  # test: convert directly in ComfyUI
+		"model_type": (["EPS", "V_PREDICTION"],),  # TODO: need auto detect
+		################################################# test: convert directly in GUI
+		# "model" : ("MODEL",),
 		# "batch_min": ("INT", {"default": 1, "min": 1, "max": 16}),
 		# "batch_opt": ("INT", {"default": 1, "min": 1, "max": 16}),
 		# "batch_max": ("INT", {"default": 1, "min": 1, "max": 16}),
-		# "height_min": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
-		# "height_opt": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
-		# "height_max": ("INT", {"default": 768, "min": 256, "max": 2048, "step": 64}),
-		# "width_min": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
-		# "width_opt": ("INT", {"default": 512, "min": 256, "max": 2048, "step": 64}),
-		# "width_max": ("INT", {"default": 768, "min": 256, "max": 2048, "step": 64}),
+		# "height_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+		# "height_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+		# "height_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
+		# "width_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+		# "width_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+		# "width_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
 		# "token_count_min": ("INT", {"default": 75, "min": 75, "max": 750}),
 		# "token_count_opt": ("INT", {"default": 75, "min": 75, "max": 750}),
 		# "token_count_max": ("INT", {"default": 75, "min": 75, "max": 750}),
@@ -97,7 +99,7 @@ class TrtUnetWrapper_Patch:
 		else:
 			return False
 
-	def model_size(self):  # get file size as workaround
+	def model_size(self):  # get file size as workaround, but incorrect if engine built with batch size > 1
 		return os.stat(self.model.diffusion_model.engine.engine_path).st_size
 
 	def memory_required(self, input_shape):
@@ -189,12 +191,17 @@ class TrtUnet:
 		Apply the model to an input batch
 
 		Args:
-			x: an [N × C × …] tensor of inputs
+			x: an [N × C × D × H × W] tensor of inputs
+				N = batch size
+				C = number of feature maps = number of channels
+				D = image depth (this dimension not always present)
+				H = image height
+				W = image width
 			timesteps: a 1-D batch of timesteps
 			context: conditioning plugged in via cross-attention
 
 		Returns:
-			an [N × C × …] tensor of outputs
+			tensor with same shape as inputs
 		"""
 		nvtx.range_push("forward")
 		feed_dict = {
