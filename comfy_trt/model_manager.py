@@ -28,7 +28,7 @@ cc_major, cc_minor = get_cc()
 
 
 class ModelManager:
-	def __init__(self, model_file=MODEL_FILE) -> None:
+	def __init__(self, model_file: str = MODEL_FILE):
 		self.all_models = {}
 		self.model_file = model_file
 		self.cc = f"cc{cc_major}{cc_minor}"
@@ -39,12 +39,12 @@ class ModelManager:
 		self.update()
 
 	@staticmethod
-	def get_onnx_path(model_name):
-		onnx_filename = f"{model_name}.onnx"
+	def get_onnx_path(model_name: str) -> tuple[str]:
+		onnx_filename = model_name + ".onnx"
 		onnx_path = os.path.join(ONNX_MODEL_DIR, onnx_filename)
 		return onnx_filename, onnx_path
 
-	def get_trt_path(self, model_name, profile, static_shape):
+	def get_trt_path(self, model_name: str, profile: dict, static_shape: bool) -> tuple[str]:
 		profile_hash = []
 		n_profiles = 1 if static_shape else 3
 		for k, v in profile.items():
@@ -60,7 +60,7 @@ class ModelManager:
 
 		return trt_filename, trt_path
 
-	def update(self):
+	def update(self) -> None:
 		trt_engines = [trt_file for trt_file in os.listdir(TRT_MODEL_DIR) if trt_file.endswith(".trt")]
 
 		tmp_all_models = self.all_models.copy()
@@ -78,33 +78,55 @@ class ModelManager:
 					self.all_models[cc].pop(base_model)
 				else:
 					self.all_models[cc][base_model] = models
-
 		self.write_json()
 
-	def add_entry(self, model_name, profile, static_shapes, fp32, baseline_model, inpaint, refit, vram, unet_hidden_dim, lora):
-		config = ModelConfig(profile, static_shapes, fp32, baseline_model, inpaint, refit, lora, vram, unet_hidden_dim)
+	def add_entry(
+		self,
+		model_name: str,
+		profile: dict,
+		static_shapes: bool,
+		fp32: bool,
+		baseline_model: str,
+		prediction_type: str,
+		inpaint: bool,
+		refit: bool,
+		vram: int,
+		unet_hidden_dim: int,
+		lora: bool
+	) -> None:
+		config = ModelConfig(profile, static_shapes, fp32, baseline_model, prediction_type, inpaint, refit, lora, vram, unet_hidden_dim)
 		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
 
-		base_model_name = f"{model_name}"
+		base_model_name = model_name
 		if self.cc not in self.all_models:
 			self.all_models[self.cc] = {}
 
 		if base_model_name not in self.all_models[self.cc]:
 			self.all_models[self.cc][base_model_name] = []
 		self.all_models[self.cc][base_model_name].append({"filepath": trt_name, "config": config})
-
 		self.write_json()
 
-	def add_lora_entry(self, base_model, lora_name, trt_lora_path, fp32, baseline_model, inpaint, vram, unet_hidden_dim):
-		config = ModelConfig([[], [], []], False, fp32, baseline_model, inpaint, True, True, vram, unet_hidden_dim)
+	def add_lora_entry(
+		self,
+		base_model: str,
+		lora_name: str,
+		trt_lora_path: str,
+		fp32: bool,
+		baseline_model: str,
+		prediction_type: str,
+		inpaint: bool,
+		vram: int,
+		unet_hidden_dim: int
+	) -> None:
+		config = ModelConfig([[], [], []], False, fp32, baseline_model, prediction_type, inpaint, True, True, vram, unet_hidden_dim)
 		self.all_models[self.cc][lora_name] = [{"filepath": trt_lora_path, "base_model": base_model, "config": config}]
 		self.write_json()
 
-	def write_json(self):
+	def write_json(self) -> None:
 		with open(self.model_file, "w") as f:
 			json.dump(self.all_models, f, indent=2, cls=ModelConfigEncoder)
 
-	def read_json(self, encode_config=True):
+	def read_json(self, encode_config: bool = True) -> dict:
 		with open(self.model_file, "r") as f:
 			out = json.load(f)
 
@@ -117,11 +139,10 @@ class ModelManager:
 					out[cc][base_model][i]["config"] = ModelConfig(**configs[i]["config"])
 		return out
 
-	def available_models(self):
-		available = self.all_models.get(self.cc, {})
-		return available
+	def available_models(self) -> dict:
+		return self.all_models.get(self.cc, {})
 
-	def get_timing_cache(self):
+	def get_timing_cache(self) -> str:
 		cache = os.path.join(
 			BASE_PATH,
 			"timing_caches",
@@ -129,7 +150,7 @@ class ModelManager:
 		)
 		return cache
 
-	def get_valid_models_from_dict(self, base_model: str, feed_dict: dict):
+	def get_valid_models_from_dict(self, base_model: str, feed_dict: dict) -> tuple[list[bool], list[float]]:
 		valid_models = []
 		distances = []
 		models = self.available_models()
@@ -140,7 +161,7 @@ class ModelManager:
 				distances.append(distance)
 		return valid_models, distances
 
-	def get_valid_models(self, base_model: str, width: int, height: int, batch_size: int, max_embedding: int):
+	def get_valid_models(self, base_model: str, width: int, height: int, batch_size: int, max_embedding: int) -> tuple[list[bool], list[float]]:
 		valid_models = []
 		distances = []
 		models = self.available_models()
@@ -155,16 +176,17 @@ class ModelManager:
 @dataclass
 class ModelConfig:
 	profile: dict
-	static_shapes: bool
-	fp32: bool
-	baseline_model: str  # save model info, for values see comfy/supported_models.py, breaking change incompatible A1111
-	inpaint: bool
-	refit: bool
-	lora: bool
-	vram: int
+	static_shapes: bool = False
+	fp32: bool = False
+	baseline_model: str = "SD15"  # save model info, for values see `comfy/supported_models.py`, breaking change incompatible A1111
+	prediction_type: str = "ModelType.EPS"  # save model info, for values see `comfy/model_base.py`, breaking change incompatible A1111
+	inpaint: bool = False
+	refit: bool = False
+	lora: bool = False
+	vram: int = 0
 	unet_hidden_dim: int = 4
 
-	def is_compatible_from_dict(self, feed_dict: dict):
+	def is_compatible_from_dict(self, feed_dict: dict) -> tuple[bool, float]:
 		distance = 0
 		for k, v in feed_dict.items():
 			_min, _opt, _max = self.profile[k]
@@ -177,7 +199,7 @@ class ModelConfig:
 			distance += r_opt.sum() + 0.5 * (r_max.sum() + 0.5 * r_min.sum())
 		return True, distance
 
-	def is_compatible(self, width: int, height: int, batch_size: int, max_embedding: int):
+	def is_compatible(self, width: int, height: int, batch_size: int, max_embedding: int) -> tuple[bool, float]:
 		distance = 0
 		sample = self.profile["sample"]
 		embedding = self.profile["encoder_hidden_states"]
@@ -206,7 +228,7 @@ class ModelConfig:
 
 
 class ModelConfigEncoder(json.JSONEncoder):
-	def default(self, o: ModelConfig):
+	def default(self, o: ModelConfig) -> dict:
 		return o.__dict__
 
 

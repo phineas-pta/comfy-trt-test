@@ -31,34 +31,34 @@ G_LOGGER.module_severity = G_LOGGER.ERROR
 
 
 class Optimizer:
-	def __init__(self, onnx_graph, verbose=False):
-		self.graph = gs.import_onnx(onnx_graph)
+	def __init__(self, onnx_graph, verbose: bool = False):
+		self.graph: gs.ir.graph.Graph = gs.import_onnx(onnx_graph)
 		self.verbose = verbose
 
-	def info(self, prefix):
+	def info(self, prefix: str) -> None:
 		if self.verbose:
-			print(f"{prefix} .. {len(self.graph.nodes)} nodes, {len(self.graph.tensors().keys())} tensors, {len(self.graph.inputs)} inputs, {len(self.graph.outputs)} outputs")
+			print(f"{prefix} … {len(self.graph.nodes)} nodes, {len(self.graph.tensors().keys())} tensors, {len(self.graph.inputs)} inputs, {len(self.graph.outputs)} outputs")
 
-	def cleanup(self, return_onnx=False):
+	def cleanup(self, return_onnx: bool = False) -> onnx.onnx_ml_pb2.ModelProto | None:
 		self.graph.cleanup().toposort()
 		if return_onnx:
 			return gs.export_onnx(self.graph)
 
-	def select_outputs(self, keep, names=None):
+	def select_outputs(self, keep, names=None) -> None:
 		self.graph.outputs = [self.graph.outputs[o] for o in keep]
 		if names:
 			for i, name in enumerate(names):
 				self.graph.outputs[i].name = name
 
-	def fold_constants(self, return_onnx=False):
+	def fold_constants(self, return_onnx: bool = False) -> onnx.onnx_ml_pb2.ModelProto | None:
 		onnx_graph = fold_constants(gs.export_onnx(self.graph), allow_onnxruntime_shape_inference=True)
 		self.graph = gs.import_onnx(onnx_graph)
 		if return_onnx:
 			return onnx_graph
 
-	def infer_shapes(self, return_onnx=False):
+	def infer_shapes(self, return_onnx: bool = False) -> onnx.onnx_ml_pb2.ModelProto | None:
 		onnx_graph = gs.export_onnx(self.graph)
-		if onnx_graph.ByteSize() > 2147483648:
+		if onnx_graph.ByteSize() > 2147483648:  # 2 GB file size limit
 			temp_dir = tempfile.TemporaryDirectory().name
 			os.makedirs(temp_dir, exist_ok=True)
 			onnx_orig_path = os.path.join(temp_dir, "model.onnx")
@@ -79,7 +79,7 @@ class Optimizer:
 		if return_onnx:
 			return onnx_graph
 
-	def clip_add_hidden_states(self, return_onnx=False):
+	def clip_add_hidden_states(self, return_onnx: bool = False) -> onnx.onnx_ml_pb2.ModelProto | None:
 		hidden_layers = -1
 		onnx_graph = gs.export_onnx(self.graph)
 		for i in range(len(onnx_graph.graph.node)):
@@ -99,39 +99,38 @@ class Optimizer:
 			return onnx_graph
 
 
-def get_unet_embedding_dim(version):
-	if version == "SD15":
-		return 768
-	elif version in ["SD20", "SD21UnclipL", "SD21UnclipH"]:
-		return 1024
-	elif version == "SDXL":
-		return 2048
-	elif version == "SDXLRefiner":
-		return 1280
-	else:
-		raise ValueError(f"Invalid version {version}")
+def get_unet_embedding_dim(version: str) -> int:
+	match version:
+		case "SD15":
+			return 768
+		case "SD20" | "SD21UnclipL" | "SD21UnclipH":
+			return 1024
+		case "SDXL":
+			return 2048
+		case "SDXLRefiner":
+			return 1280
+		case _:
+			raise ValueError(f"Invalid version {version}")
 
 
 class BaseModelBis:  # change name to distingush from existing 1 in comfy
 	def __init__(
 		self,
-		version,
-		device="cuda",
-		fp16=False,
-		verbose=True,
-		max_batch_size=16,
-		text_maxlen=77,
-		text_optlen=77,
-		unet_dim=4,  # 9 for inpaint model
-		embedding_dim=768,
-		controlnet=None,
+		version: str,
+		device: str = "cuda",
+		fp16: bool = False,
+		verbose: bool = True,
+		max_batch_size: int = 16,
+		text_maxlen: int = 77,
+		text_optlen: int = 77,
+		unet_dim: int = 4,  # 9 for inpaint model
+		embedding_dim: int = 768,
 	):
 		self.name = self.__class__.__name__
 		self.version = version
 		self.device = device
 		self.verbose = verbose
 		self.fp16 = fp16
-		self.controlnet = controlnet
 
 		self.min_batch = 1
 		self.max_batch = max_batch_size
@@ -146,25 +145,7 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		self.embedding_dim = embedding_dim
 		self.extra_output_names = []
 
-	def get_input_names(self):
-		pass
-
-	def get_output_names(self):
-		pass
-
-	def get_dynamic_axes(self):
-		return None
-
-	def get_sample_input(self, batch_size, image_height, image_width):
-		pass
-
-	def get_input_profile(self, batch_size, image_height, image_width, static_batch, static_shape):
-		return None
-
-	def get_shape_dict(self, batch_size, image_height, image_width):
-		return None
-
-	def optimize(self, onnx_graph):
+	def optimize(self, onnx_graph: gs.ir.graph.Graph) -> onnx.onnx_ml_pb2.ModelProto:
 		opt = Optimizer(onnx_graph, verbose=self.verbose)
 		opt.info(self.name + ": original")
 		opt.cleanup()
@@ -177,7 +158,7 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		opt.info(self.name + ": finished")
 		return onnx_opt_graph
 
-	def check_dims(self, batch_size, image_height, image_width):
+	def check_dims(self, batch_size: int, image_height: int, image_width: int) -> tuple[int]:
 		assert self.min_batch <= batch_size <= self.max_batch
 		assert image_height % 8 == 0 or image_width % 8 == 0
 		latent_height = image_height // 8
@@ -186,7 +167,7 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		assert self.min_latent_shape <= latent_width <= self.max_latent_shape
 		return latent_height, latent_width
 
-	def get_minmax_dims(self, batch_size, image_height, image_width, static_batch, static_shape):
+	def get_minmax_dims(self, batch_size: int, image_height: int, image_width: int, static_batch: bool, static_shape: bool) -> tuple[int]:
 		min_batch = batch_size if static_batch else self.min_batch
 		max_batch = batch_size if static_batch else self.max_batch
 		latent_height = image_height // 8
@@ -200,25 +181,20 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 		min_latent_width = latent_width if static_shape else self.min_latent_shape
 		max_latent_width = latent_width if static_shape else self.max_latent_shape
 		return (
-			min_batch,
-			max_batch,
-			min_image_height,
-			max_image_height,
-			min_image_width,
-			max_image_width,
-			min_latent_height,
-			max_latent_height,
-			min_latent_width,
-			max_latent_width,
+			min_batch, max_batch,
+			min_image_height, max_image_height,
+			min_image_width, max_image_width,
+			min_latent_height, max_latent_height,
+			min_latent_width, max_latent_width,
 		)
 
-	def get_latent_dim(self, min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape):
+	def get_latent_dim(self, min_h: int, opt_h: int, max_h: int, min_w: int, opt_w: int, max_w: int, static_shape: bool) -> tuple[int]:
 		if static_shape:
 			return opt_h // 8, opt_h // 8, opt_h // 8, opt_w // 8, opt_w // 8, opt_w // 8
 		else:
 			return min_h // 8, opt_h // 8, max_h // 8, min_w // 8, opt_w // 8, max_w // 8
 
-	def get_batch_dim(self, min_batch, opt_batch, max_batch, static_batch):
+	def get_batch_dim(self, min_batch: int, opt_batch: int, max_batch: int, static_batch: bool) -> tuple[int]:
 		if self.text_maxlen <= 77:
 			return min_batch * 2, opt_batch * 2, max_batch * 2
 		elif self.text_maxlen > 77 and static_batch:
@@ -234,15 +210,14 @@ class BaseModelBis:  # change name to distingush from existing 1 in comfy
 class OAIUNet(BaseModelBis):
 	def __init__(
 		self,
-		version,
-		device="cuda",
-		fp16=True,
-		verbose=True,
-		max_batch_size=16,
-		text_maxlen=77,
-		text_optlen=77,
-		unet_dim=4,  # 9 for inpaint model
-		controlnet=None,
+		version: str,
+		device: str = "cuda",
+		fp16: bool = True,
+		verbose: bool = True,
+		max_batch_size: int = 16,
+		text_maxlen: int = 77,
+		text_optlen: int = 77,
+		unet_dim: int = 4,  # 9 for inpaint model
 	):
 		super().__init__(
 			version=version,
@@ -254,139 +229,85 @@ class OAIUNet(BaseModelBis):
 			text_optlen=text_optlen,
 			unet_dim=unet_dim,
 			embedding_dim=get_unet_embedding_dim(version),
-			controlnet=controlnet,
 		)
 
-	def get_input_names(self):
-		if self.controlnet is None:
-			return ["sample", "timesteps", "encoder_hidden_states"]
-		else:
-			return ["sample", "timesteps", "encoder_hidden_states", "images", "controlnet_scales"]
+	def get_input_names(self) -> list[str]:
+		return ["sample", "timesteps", "encoder_hidden_states"]
 
-	def get_output_names(self):
+	def get_output_names(self) -> list[str]:
 		return ["latent"]
 
-	def get_dynamic_axes(self):
-		if self.controlnet is None:
-			return {
-				"sample": {0: "2B", 2: "H", 3: "W"},
-				"timesteps": {0: "2B"},
-				"encoder_hidden_states": {0: "2B", 1: "77N"},
-				"latent": {0: "2B", 2: "H", 3: "W"},
-			}
-		else:
-			return {
-				"sample": {0: "2B", 2: "H", 3: "W"},
-				"timesteps": {0: "2B"},
-				"encoder_hidden_states": {0: "2B", 1: "77N"},
-				"images": {1: "2B", 3: "8H", 4: "8W"},
-				"latent": {0: "2B", 2: "H", 3: "W"},
-			}
+	def get_dynamic_axes(self) -> dict[str, dict[int, str]]:
+		return {
+			"sample": {0: "2B", 2: "H", 3: "W"},
+			"timesteps": {0: "2B"},
+			"encoder_hidden_states": {0: "2B", 1: "77N"},
+			"latent": {0: "2B", 2: "H", 3: "W"},
+		}
 
-	def get_input_profile(self, min_batch, opt_batch, max_batch, min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape):
+	def get_input_profile(
+		self,
+		min_batch: int, opt_batch: int, max_batch: int,
+		min_h: int, opt_h: int, max_h: int,
+		min_w: int, opt_w: int, max_w: int,
+		static_shape: bool
+	) -> dict[str, list[tuple[int]]]:
 		min_batch, opt_batch, max_batch = self.get_batch_dim(min_batch, opt_batch, max_batch, static_shape)
 		(
-			min_latent_height,
-			latent_height,
-			max_latent_height,
-			min_latent_width,
-			latent_width,
-			max_latent_width,
+			min_latent_height, latent_height, max_latent_height,
+			min_latent_width, latent_width, max_latent_width,
 		) = self.get_latent_dim(min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape)
 
-		if self.controlnet is None:
-			return {
-				"sample": [
-					(min_batch, self.unet_dim, min_latent_height, min_latent_width),
-					(opt_batch, self.unet_dim, latent_height, latent_width),
-					(max_batch, self.unet_dim, max_latent_height, max_latent_width),
-				],
-				"timesteps": [
-					(min_batch,),
-					(opt_batch,),
-					(max_batch,)
-				],
-				"encoder_hidden_states": [
-					(min_batch, self.text_optlen, self.embedding_dim),
-					(opt_batch, self.text_optlen, self.embedding_dim),
-					(max_batch, self.text_maxlen, self.embedding_dim),
-				],
-			}
-		else:
-			return {
-				"sample": [
-					(min_batch, self.unet_dim, min_latent_height, min_latent_width),
-					(opt_batch, self.unet_dim, latent_height, latent_width),
-					(max_batch, self.unet_dim, max_latent_height, max_latent_width),
-				],
-				"timesteps": [
-					(min_batch,),
-					(opt_batch,),
-					(max_batch,)
-				],
-				"encoder_hidden_states": [
-					(min_batch, self.text_optlen, self.embedding_dim),
-					(opt_batch, self.text_optlen, self.embedding_dim),
-					(max_batch, self.text_maxlen, self.embedding_dim),
-				],
-				"images": [
-					(len(self.controlnet), min_batch, 3, min_h, min_w),
-					(len(self.controlnet), opt_batch, 3, opt_h, opt_w),
-					(len(self.controlnet), max_batch, 3, max_h, max_w),
-				],
-			}
+		return {
+			"sample": [
+				(min_batch, self.unet_dim, min_latent_height, min_latent_width),
+				(opt_batch, self.unet_dim, latent_height, latent_width),
+				(max_batch, self.unet_dim, max_latent_height, max_latent_width),
+			],
+			"timesteps": [
+				(min_batch,),
+				(opt_batch,),
+				(max_batch,),
+			],
+			"encoder_hidden_states": [
+				(min_batch, self.text_optlen, self.embedding_dim),
+				(opt_batch, self.text_optlen, self.embedding_dim),
+				(max_batch, self.text_maxlen, self.embedding_dim),
+			],
+		}
 
-	def get_shape_dict(self, batch_size, image_height, image_width):
+	def get_shape_dict(self, batch_size: int, image_height: int, image_width: int) -> dict[str, tuple[int]]:
 		latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
-		if self.controlnet is None:
-			return {
-				"sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
-				"timesteps": (2 * batch_size,),
-				"encoder_hidden_states": (2 * batch_size, self.text_optlen, self.embedding_dim),
-				"latent": (2 * batch_size, 4, latent_height, latent_width),
-			}
-		else:
-			return {
-				"sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
-				"timesteps": (2 * batch_size,),
-				"encoder_hidden_states": (2 * batch_size, self.text_optlen, self.embedding_dim),
-				"images": (len(self.controlnet), 2 * batch_size, 3, image_height, image_width),
-				"latent": (2 * batch_size, 4, latent_height, latent_width),
-			}
+		return {
+			"sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
+			"timesteps": (2 * batch_size,),
+			"encoder_hidden_states": (2 * batch_size, self.text_optlen, self.embedding_dim),
+			"latent": (2 * batch_size, 4, latent_height, latent_width),
+		}
 
-	def get_sample_input(self, batch_size, image_height, image_width):
+	def get_sample_input(self, batch_size: int, image_height: int, image_width: int) -> tuple[torch.Tensor]:
 		latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
 		dtype = torch.float16 if self.fp16 else torch.float32
-		if self.controlnet is None:
-			return (
-				torch.randn(2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device),
-				torch.ones((2 * batch_size,), dtype=torch.float32, device=self.device),
-				torch.randn(2 * batch_size, self.text_optlen, self.embedding_dim, dtype=dtype, device=self.device),
-			)
-		else:
-			return (
-				torch.randn(batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device),
-				torch.ones((batch_size,), dtype=torch.float32, device=self.device),
-				torch.randn(batch_size, self.text_optlen, self.embedding_dim, dtype=dtype, device=self.device),
-				torch.randn(len(self.controlnet), batch_size, 3, image_height, image_width, dtype=dtype, device=self.device),
-				torch.randn(len(self.controlnet), dtype=dtype, device=self.device),
-			)
+		return (
+			torch.randn(2 * batch_size, self.unet_dim, latent_height, latent_width, dtype=torch.float32, device=self.device),
+			torch.ones((2 * batch_size,), dtype=torch.float32, device=self.device),
+			torch.randn(2 * batch_size, self.text_optlen, self.embedding_dim, dtype=dtype, device=self.device),
+		)
 
 
 class OAIUNetXL(BaseModelBis):
 	def __init__(
 		self,
-		version,
-		device="cuda",
-		fp16=True,
-		verbose=True,
-		max_batch_size=16,
-		text_maxlen=77,
-		text_optlen=77,
-		unet_dim=4,  # 9 for inpaint model
-		time_dim=6,
-		num_classes=2816,  # 2560 for refiner
-		controlnet=None,
+		version: str,
+		device: str = "cuda",
+		fp16: bool = True,
+		verbose: bool = True,
+		max_batch_size: int = 16,
+		text_maxlen: int = 77,
+		text_optlen: int = 77,
+		unet_dim: int = 4,  # 9 for inpaint model
+		time_dim: int = 6,
+		num_classes: int = 2816,  # 2560 for refiner
 	):
 		super().__init__(
 			version=version,
@@ -398,18 +319,17 @@ class OAIUNetXL(BaseModelBis):
 			text_optlen=text_optlen,
 			unet_dim=unet_dim,
 			embedding_dim=get_unet_embedding_dim(version),
-			controlnet=controlnet,
 		)
 		self.time_dim = time_dim
 		self.num_classes = num_classes
 
-	def get_input_names(self):
+	def get_input_names(self) -> list[str]:
 		return ["sample", "timesteps", "encoder_hidden_states", "y"]
 
-	def get_output_names(self):
+	def get_output_names(self) -> list[str]:
 		return ["latent"]
 
-	def get_dynamic_axes(self):
+	def get_dynamic_axes(self) -> dict[str, dict[int, str]]:
 		return {
 			"sample": {0: "2B", 2: "H", 3: "W"},
 			"encoder_hidden_states": {0: "2B", 1: "77N"},
@@ -418,16 +338,18 @@ class OAIUNetXL(BaseModelBis):
 			"y": {0: "2B", 1: "num_classes"},
 		}
 
-	def get_input_profile(self, min_batch, opt_batch, max_batch, min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape):
+	def get_input_profile(
+		self,
+		min_batch: int, opt_batch: int, max_batch: int,
+		min_h: int, opt_h: int, max_h: int,
+		min_w: int, opt_w: int, max_w: int,
+		static_shape: bool
+	) -> dict[str, list[tuple[int]]]:
 		min_batch, opt_batch, max_batch = self.get_batch_dim(min_batch, opt_batch, max_batch, static_shape)
 
 		(
-			min_latent_height,
-			latent_height,
-			max_latent_height,
-			min_latent_width,
-			latent_width,
-			max_latent_width,
+			min_latent_height, latent_height, max_latent_height,
+			min_latent_width, latent_width, max_latent_width,
 		) = self.get_latent_dim(min_h, opt_h, max_h, min_w, opt_w, max_w, static_shape)
 
 		return {
@@ -453,7 +375,7 @@ class OAIUNetXL(BaseModelBis):
 			],
 		}
 
-	def get_shape_dict(self, batch_size, image_height, image_width):
+	def get_shape_dict(self, batch_size: int, image_height: int, image_width: int) -> dict[str, tuple[int]]:
 		latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
 		return {
 			"sample": (2 * batch_size, self.unet_dim, latent_height, latent_width),
@@ -463,7 +385,7 @@ class OAIUNetXL(BaseModelBis):
 			"latent": (2 * batch_size, 4, latent_height, latent_width),
 		}
 
-	def get_sample_input(self, batch_size, image_height, image_width):
+	def get_sample_input(self, batch_size: int, image_height: int, image_width: int) -> tuple[torch.Tensor]:
 		latent_height, latent_width = self.check_dims(batch_size, image_height, image_width)
 		dtype = torch.float16 if self.fp16 else torch.float32
 		return (

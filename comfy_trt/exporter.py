@@ -14,13 +14,21 @@ import onnx
 from .utilities import Engine
 
 
-def get_cc():
-	cc_major = torch.cuda.get_device_properties(0).major
-	cc_minor = torch.cuda.get_device_properties(0).minor
-	return cc_major, cc_minor
+def get_cc() -> tuple[int]:
+	res = torch.cuda.get_device_properties(int(os.getenv("CUDA_VISIBLE_DEVICES", 0)))
+	return res.major, res.minor
 
 
-def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, opset=17, disable_optimizations=False, lora_path=None):
+def export_onnx(
+	model,
+	onnx_path: str,
+	is_sdxl: bool = False,
+	modelobj=None,  # BaseModelBis from models.py
+	profile: dict = None,
+	opset: int = 17,
+	disable_optimizations: bool = False,
+	lora_path: str = None
+) -> None:
 
 	os.makedirs("onnx_tmp", exist_ok=True)
 	tmp_path = os.path.abspath(os.path.join("onnx_tmp", "tmp.onnx"))
@@ -71,15 +79,10 @@ def export_onnx(model, onnx_path, is_sdxl=False, modelobj=None, profile=None, op
 	del model
 
 
-def export_trt(trt_path, onnx_path, timing_cache, profile, use_fp16):
+def export_trt(trt_path: str, onnx_path: str, timing_cache: str, profile: dict, use_fp16: bool) -> int:
 	engine = Engine(trt_path)
-
-	# TODO Still approx. 2gb of VRAM unaccounted for…
-	torch.cuda.empty_cache()
-
 	s = time.time()
 	ret = engine.build(onnx_path, use_fp16, enable_refit=True, enable_preview=True, timing_cache=timing_cache, input_profile=[profile])
 	e = time.time()
-	logging.info(f"Time taken to build: {(e-s)}s")
-
+	logging.info(f"Time taken to build: {e-s}s")
 	return ret

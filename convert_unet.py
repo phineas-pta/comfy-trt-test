@@ -58,7 +58,7 @@ def get_config_from_checkpoint(ckpt_path: str) -> dict:
 			return {
 				"model": model.diffusion_model,
 				"baseline_model": model_config.__qualname__,
-				# "comfy_model_type": tmp1.model_type(sd, tmp0),  # TODO: not reliable with SD v2
+				"prediction_type": str(model.model_type),
 				"unet_hidden_dim": unet_config["in_channels"],
 			}
 
@@ -186,6 +186,7 @@ if __name__ == "__main__":
 				args.static_shapes,
 				fp32=args.float32,
 				baseline_model=baseline_model,  # breaking change incompatible A1111
+				prediction_type=ckpt_config["prediction_type"],  # breaking change incompatible A1111
 				inpaint=ckpt_config["unet_hidden_dim"] > 4,
 				refit=True,
 				vram=0,

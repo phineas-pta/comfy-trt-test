@@ -39,7 +39,7 @@ from polygraphy.logger import G_LOGGER
 import tensorrt as trt
 import torch
 from torch.cuda import nvtx
-from safetensors.numpy import save_file, load_file
+from safetensors.numpy import save_file as st_save_file, load_file as st_load_file
 
 
 TRT_LOGGER = trt.Logger(trt.Logger.ERROR)
@@ -67,14 +67,24 @@ else:
 torch_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_torch_dtype_dict.items()}
 
 
+def change_trt_layer_name(layer_name: str, role: trt.WeightsRole) -> str:
+	"""just refactoring a snippet used multiple times: for specialized roles, use a unique name in the map"""
+	match role:
+		case trt.WeightsRole.KERNEL:
+			return layer_name + "_TRTKERNEL"
+		case trt.WeightsRole.BIAS:
+			return layer_name + "_TRTBIAS"
+		case _:
+			return layer_name
+
+
 class Engine:
-	def __init__(self, engine_path):
+	def __init__(self, engine_path: str):
 		self.engine_path = engine_path
-		self.engine = None
-		self.context = None
+		self.engine: trt.tensorrt.ICudaEngine = None
+		self.context: trt.tensorrt.IExecutionContext = None
 		self.buffers = OrderedDict()
 		self.tensors = OrderedDict()
-		self.cuda_graph_instance = None  # cuda graph
 
 	def __del__(self):
 		del self.engine
@@ -82,18 +92,12 @@ class Engine:
 		del self.buffers
 		del self.tensors
 
-	def refit(self, onnx_path, onnx_refit_path, dump_refit_path=None):
-		def convert_int64(arr):
-			# TODO: smarter conversion
-			if len(arr.shape) == 0:
-				return np.int32(arr)
-			return arr
-
-		def add_to_map(refit_dict, name, values):
+	def refit(self, onnx_path: str, onnx_refit_path: str, dump_refit_path: str | None = None) -> None:
+		def add_to_map(refit_dict: dict, name: str, values: np.ndarray):
 			if name in refit_dict:
 				assert refit_dict[name] is None
-				if values.dtype == np.int64:
-					values = convert_int64(values)
+				if values.dtype == np.int64 and len(values.shape) == 0:
+					values = np.int32(values)  # TODO: smarter conversion
 				refit_dict[name] = values
 
 		print(f"Refitting TensorRT engine with {onnx_refit_path} weights")
@@ -129,14 +133,7 @@ class Engine:
 		refitter = trt.Refitter(self.engine, TRT_LOGGER)
 		all_weights = refitter.get_all()
 		for layer_name, role in zip(all_weights[0], all_weights[1]):
-			# for specialized roles, use a unique name in the map:
-			if role == trt.WeightsRole.KERNEL:
-				name = layer_name + "_TRTKERNEL"
-			elif role == trt.WeightsRole.BIAS:
-				name = layer_name + "_TRTBIAS"
-			else:
-				name = layer_name
-
+			name = change_trt_layer_name(layer_name, role)
 			assert name not in refit_dict, "Found duplicate layer: " + name
 			refit_dict[name] = None
 
@@ -175,16 +172,11 @@ class Engine:
 
 		if dump_refit_path is not None:
 			print("Finished refit. Dumping result to disk.")
-			save_file(refit_dict, dump_refit_path)  # TODO need to come up with delta system to save only changed weights
+			st_save_file(refit_dict, dump_refit_path)  # TODO need to come up with delta system to save only changed weights
 			return
 
 		for layer_name, weights_role in zip(all_weights[0], all_weights[1]):
-			if weights_role == trt.WeightsRole.KERNEL:
-				custom_name = layer_name + "_TRTKERNEL"
-			elif weights_role == trt.WeightsRole.BIAS:
-				custom_name = layer_name + "_TRTBIAS"
-			else:
-				custom_name = layer_name
+			custom_name = change_trt_layer_name(layer_name, weights_role)
 
 			# Skip refitting Trilu for now; scalar weights of type int64 value 1 - for clip model
 			if layer_name.startswith("onnx::Trilu"):
@@ -199,19 +191,14 @@ class Engine:
 			print("Failed to refit!")
 			exit(0)
 
-	def refit_from_dump(self, dump_refit_path):
-		refit_dict = load_file(dump_refit_path)  # TODO if deltas are used needs to be unpacked here
+	def refit_from_dump(self, dump_refit_path: str) -> None:
+		refit_dict = st_load_file(dump_refit_path)  # TODO if deltas are used needs to be unpacked here
 
 		refitter = trt.Refitter(self.engine, TRT_LOGGER)
 		all_weights = refitter.get_all()
 
 		for layer_name, weights_role in zip(all_weights[0], all_weights[1]):
-			if weights_role == trt.WeightsRole.KERNEL:
-				custom_name = layer_name + "_TRTKERNEL"
-			elif weights_role == trt.WeightsRole.BIAS:
-				custom_name = layer_name + "_TRTBIAS"
-			else:
-				custom_name = layer_name
+			custom_name = change_trt_layer_name(layer_name, weights_role)
 
 			# Skip refitting Trilu for now; scalar weights of type int64 value 1 - for clip model
 			if layer_name.startswith("onnx::Trilu"):
@@ -228,15 +215,14 @@ class Engine:
 
 	def build(
 		self,
-		onnx_path,
-		fp16,
-		input_profile=None,
-		enable_refit=False,
-		enable_preview=False,
-		enable_all_tactics=False,
-		timing_cache=None,
-		update_output_names=None,
-	):
+		onnx_path: str,
+		fp16: bool,
+		input_profile: list[dict] | None = None,
+		enable_refit: bool = False,
+		enable_all_tactics: bool = False,
+		timing_cache: str | None = None,
+		update_output_names: str | None = None,
+	) -> int:
 		print(f"Building TensorRT engine for {onnx_path}: {self.engine_path}")
 		p = [Profile()]
 		if input_profile:
@@ -291,17 +277,17 @@ class Engine:
 			return 1
 		return 0
 
-	def load(self):
+	def load(self) -> None:
 		print(f"Loading TensorRT engine: {self.engine_path}")
 		self.engine = engine_from_bytes(bytes_from_path(self.engine_path))
 
-	def activate(self, reuse_device_memory=None):
+	def activate(self, reuse_device_memory: bool = False) -> None:
 		if reuse_device_memory:
 			self.context = self.engine.create_execution_context_without_device_memory()
 		else:
 			self.context = self.engine.create_execution_context()
 
-	def allocate_buffers(self, shape_dict=None, device="cuda"):
+	def allocate_buffers(self, shape_dict: dict = None, device: str = "cuda") -> None:
 		nvtx.range_push("allocate_buffers")
 		for idx in range(self.engine.num_io_tensors):
 			binding = self.engine[idx]
@@ -317,7 +303,7 @@ class Engine:
 			self.tensors[binding] = tensor
 		nvtx.range_pop()
 
-	def infer(self, feed_dict, stream, use_cuda_graph=False):
+	def infer(self, feed_dict: dict, stream: int) -> OrderedDict[str, torch.Tensor]:
 		nvtx.range_push("set_tensors")
 		for name, buf in feed_dict.items():
 			self.tensors[name].copy_(buf)

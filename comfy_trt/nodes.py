@@ -43,7 +43,6 @@ class TRT_Unet_Loader:
 	@classmethod
 	def INPUT_TYPES(cls): return {"required": {
 		"engine_file": (list(LIST_ENGINES.keys()),),
-		"model_type": (["EPS", "V_PREDICTION"],),  # TODO: need auto detect
 		################################################# test: convert directly in GUI
 		# "model" : ("MODEL",),
 		# "batch_min": ("INT", {"default": 1, "min": 1, "max": 16}),
@@ -63,7 +62,7 @@ class TRT_Unet_Loader:
 		# "use_float32": ("BOOLEAN", {"default": False}),
 	}}
 
-	def load_trt(self, engine_file, model_type):
+	def load_trt(self, engine_file: str) -> tuple:
 		configs: list = LIST_ENGINES[engine_file]
 		if configs[0]["config"].lora:
 			model_name = configs[0]["base_model"]
@@ -71,54 +70,55 @@ class TRT_Unet_Loader:
 		else:
 			model_name = engine_file
 			lora_path = None
-		return (TrtUnetWrapper_Patch(model_name, model_type, configs, lora_path),)
+		return (TrtUnetWrapper_Patch(model_name, configs, lora_path),)
 
 
 class TrtUnetWrapper_Patch:
 	"""ComfyUI unet patched, see comfy/model_patcher.py"""
-	def __init__(self, model_name: str, model_type: str, configs: list, lora_path: str):
-		self.model = TrtUnetWrapper_Base(model_name, model_type, configs, lora_path)
+	def __init__(self, model_name: str, configs: list, lora_path: str):
+		self.model = TrtUnetWrapper_Base(model_name, configs, lora_path)
 		self.latent_format = self.model.latent_format
 		self.model_sampling = self.model.model_sampling
 		self.current_device = self.offload_device = "cpu"
 		self.model_options = {"transformer_options": {}}
 		self.load_device = model_management.get_torch_device() # workaround `latent_preview.py`
 
-	def model_dtype(self):
+	def model_dtype(self) -> torch.dtype:
 		return self.model.dtype
 
-	def process_latent_in(self, latent):
+	def process_latent_in(self, latent: torch.Tensor) -> torch.Tensor:
 		return self.latent_format.process_in(latent)
 
-	def process_latent_out(self, latent):
+	def process_latent_out(self, latent: torch.Tensor) -> torch.Tensor:
 		return self.latent_format.process_out(latent)
 
-	def is_clone(self, other):
+	def is_clone(self, other) -> bool:
 		if hasattr(other, "model") and self.model is other.model:
 			return True
 		else:
 			return False
 
-	def model_size(self):  # get file size as workaround, but incorrect if engine built with batch size > 1
+	def model_size(self) -> int:  # get file size as workaround, but incorrect if engine built with batch size > 1
 		return os.stat(self.model.diffusion_model.engine.engine_path).st_size
 
-	def memory_required(self, input_shape):
+	def memory_required(self, input_shape: torch.Size) -> float:
 		return self.model.memory_required(input_shape=input_shape)
 
-	def model_patches_to(self, dtype):
+	def model_patches_to(self, device: torch.dtype | torch.device) -> None:
 		pass
 
-	def patch_model(self, device_to=None):
-		self.model.diffusion_model.activate()
+	def patch_model(self, device_to: torch.device = None) -> None:
+		if self.model.diffusion_model.engine.engine is None:
+			self.model.diffusion_model.activate()
 
-	def unpatch_model(self, device_to=None):
+	def unpatch_model(self, device_to: torch.device = None) -> None:
 		self.model.diffusion_model.deactivate()
 
 
 class TrtUnetWrapper_Base:
 	"""ComfyUI unet base, see comfy/model_base.py"""
 
-	def __init__(self, model_name: str, model_type: str, configs: list, lora_path: str):
+	def __init__(self, model_name: str, configs: list, lora_path: str):
 		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
 
 		baseline_model: str = configs[0]["config"].baseline_model
@@ -127,10 +127,10 @@ class TrtUnetWrapper_Base:
 				self.model_config = mod
 				break
 
-		match model_type:
-			case "EPS":
+		match configs[0]["config"].prediction_type:
+			case "ModelType.EPS":
 				self.model_type = ModelType.EPS
-			case "V_PREDICTION":
+			case "ModelType.V_PREDICTION":
 				self.model_type = ModelType.V_PREDICTION
 
 		self.latent_format = self.model_config.latent_format()  # must init here
@@ -139,7 +139,7 @@ class TrtUnetWrapper_Base:
 		self.inpaint_model: bool = configs[0]["config"].inpaint
 		self.dtype = torch.float32 if configs[0]["config"].fp32 else torch.float16
 
-	def apply_model(self, x, t, c_concat=None, c_crossattn=None, c_adm=None, control=None, transformer_options={}, **kwargs):
+	def apply_model(self, x: torch.Tensor, t: torch.Tensor, c_concat=None, c_crossattn=None, c_adm=None, control=None, transformer_options={}, **kwargs) -> torch.Tensor:
 		sigma = t
 		xc = self.model_sampling.calculate_input(sigma, x)
 		if c_concat is not None:
@@ -159,16 +159,16 @@ class TrtUnetWrapper_Base:
 		model_output = self.diffusion_model.forward(x=xc, timesteps=t, context=context, **extra_conds).float()
 		return self.model_sampling.calculate_denoised(sigma, model_output, x)
 
-	def set_inpaint(self):
+	def set_inpaint(self) -> None:
 		self.inpaint_model = True
 
-	def process_latent_in(self, latent):
+	def process_latent_in(self, latent: torch.Tensor) -> torch.Tensor:
 		return self.latent_format.process_in(latent)
 
-	def process_latent_out(self, latent):
+	def process_latent_out(self, latent: torch.Tensor) -> torch.Tensor:
 		return self.latent_format.process_out(latent)
 
-	def memory_required(self, input_shape):  # regularly watch comfy to update this formula
+	def memory_required(self, input_shape: torch.Size) -> float:  # regularly watch comfy to update this formula
 		area = input_shape[0] * input_shape[2] * input_shape[3]
 		return (area * .6 / .9 + 1024) * 1024**2
 
@@ -176,7 +176,7 @@ class TrtUnetWrapper_Base:
 class TrtUnet:
 	"""A1111 unet, see A1111 TensorRT >>> trt.py"""
 
-	def __init__(self, model_name: str, configs: list, lora_path: str):
+	def __init__(self, model_name: str, configs: list[dict], lora_path: str):
 		self.configs = configs
 		self.stream = None
 		self.model_name = model_name
@@ -186,7 +186,7 @@ class TrtUnet:
 		self.shape_hash = 0
 		self.engine = Engine(os.path.join(TRT_MODEL_DIR, self.loaded_config["filepath"]))
 
-	def forward(self, x, timesteps, context, *args, **kwargs):
+	def forward(self, x: torch.Tensor, timesteps: torch.Tensor, context: torch.Tensor, *args, **kwargs) -> torch.Tensor:
 		"""
 		Apply the model to an input batch
 
@@ -223,14 +223,14 @@ class TrtUnet:
 
 		tmp = torch.empty(self.engine_vram_req, dtype=torch.uint8, device="cuda")
 		self.engine.context.device_memory = tmp.data_ptr()
-		self.cudaStream = torch.cuda.current_stream().cuda_stream
+		self.stream = torch.cuda.current_stream().cuda_stream
 		self.engine.allocate_buffers(feed_dict)
 
-		out = self.engine.infer(feed_dict, self.cudaStream)["latent"]
+		out = self.engine.infer(feed_dict, self.stream)["latent"]
 		nvtx.range_pop()
 		return out
 
-	def switch_engine(self, feed_dict):
+	def switch_engine(self, feed_dict: dict) -> None:
 		valid_models, distances = modelmanager.get_valid_models_from_dict(self.model_name, feed_dict)
 		if len(valid_models) == 0:
 			raise ValueError("No valid profile found.") # TODO: SDXL cannot get valid models
@@ -243,15 +243,16 @@ class TrtUnet:
 		self.activate()
 		self.loaded_config = best
 
-	def activate(self):
+	def activate(self) -> None:
 		self.engine.load()
-		print(self.engine)
 		self.engine_vram_req = self.engine.engine.device_memory_size
 		self.engine.activate(True)
 
 		if self.lora_path is not None:
 			self.engine.refit_from_dump(self.lora_path)
 
-	def deactivate(self):
+	def deactivate(self) -> None:
 		self.shape_hash = 0
+		backup = self.engine.engine_path
 		del self.engine
+		self.engine = Engine(backup)

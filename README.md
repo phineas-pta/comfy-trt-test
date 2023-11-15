@@ -17,7 +17,7 @@ very limited usefulness as no additionnal features supported in upstream (contro
 work-in-progress
 - [x] conversion script in CLI
 - [x] add new loader node
-- [ ] unload model when not in use
+- [ ] keep model in VRAM after use
 - [ ] conversion in GUI (rewrite loader node)
 - [ ] re-use engine from A1111 (conversion in GUI)
 - [ ] make it more automatic / user-friendly / compatible with `ComfyUI-Manager`
@@ -61,13 +61,11 @@ build engine with default profile: `python convert_unet.py --ckpt_path <checkpoi
 
 for more options: see `python convert_unet.py --help`
 
-example with 8 GB VRAM + SD 1.5 or 2.1: `--batch_max 4 --height_min 256 --width_min 256`
+example with 8 GB VRAM + SD 1.5 or 2.1: `--batch_max 4 --height_min 256 --width_min 256`, SDXL batch size 1
 
 1 model can be converted multiple times with different profiles (but take lot more disk space)
 
 may take roughly 10’ (SD 1.5 & 2.1) up to 30’ (SDXL) — no progress bar like A1111 yet
-
-SDXL need at least 8 GB VRAM to convert (no refiner yet)
 
 for now no LoRA nor ControlNet support yet
 
@@ -79,17 +77,11 @@ engine files created in `comfy-trt-test/comfy_trt/Unet-trt/`
 
 add node → “advanced” → “loaders” → “load Unet in TensorRT” → replace “model” in normal checkpoint loader when connect to KSampler
 
-need to get CLIP & VAE from according checkpoint
+need to get CLIP & VAE from appropriate checkpoint, or load separately CLIP & VAE
 
 ⚠️ this node doesn’t respect any comfy settings about vram/memory
 
-how to select model type:
-- SD 1.5: select `EPS`
-- SD 2.1: select `V_PREDICTION`, but **if inpaint** or rubbish result image then select `EPS`
-- SDXL base: select `EPS`, but if rubbish result image then select `V_PREDICTION`
-- SDXL refiner: select `EPS`
-
-⚠️ VRAM not released when node not in use, need restart python session to clear
+⚠️ model auto unload after use, cannot move between RAM - VRAM like normal model
 
 ## 🗿 frequently seen error messages
 
@@ -117,6 +109,7 @@ if error `No valid profile found` then engine built with incompatible image reso
 
 original implementation:
 - https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT (upstream)
+- https://github.com/NVIDIA/TensorRT/tree/release/9.1/demo/Diffusion
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
 
