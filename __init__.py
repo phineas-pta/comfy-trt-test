@@ -10,7 +10,7 @@
 # this file is the entry point so ComfyUI can detect as extension/custom node
 # for more specifications see https://github.com/ltdrdata/ComfyUI-Manager
 
-from .comfy_trt.nodes import TRT_Unet_Loader
+from .comfy_trt.node_unet import TRT_Unet_Loader
 
 
 NODE_CLASS_MAPPINGS = {
