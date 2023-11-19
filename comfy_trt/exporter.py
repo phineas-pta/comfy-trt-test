@@ -82,7 +82,7 @@ def export_onnx(
 def export_trt(trt_path: str, onnx_path: str, timing_cache: str, profile: dict, use_fp16: bool) -> int:
 	engine = Engine(trt_path)
 	s = time.time()
-	ret = engine.build(onnx_path, use_fp16, enable_refit=True, enable_preview=True, timing_cache=timing_cache, input_profile=[profile])
+	ret = engine.build(onnx_path, use_fp16, enable_refit=True, timing_cache=timing_cache, input_profile=[profile])
 	e = time.time()
 	logging.info(f"Time taken to build: {e-s}s")
 	return ret

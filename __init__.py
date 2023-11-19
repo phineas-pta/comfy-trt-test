@@ -11,13 +11,16 @@
 # for more specifications see https://github.com/ltdrdata/ComfyUI-Manager
 
 from .comfy_trt.node_unet import TRT_Unet_Loader
+# from .comfy_trt.node_lora import TRT_Lora_Loader
 
 
 NODE_CLASS_MAPPINGS = {
 	"TRT_Unet_Loader": TRT_Unet_Loader,
+	# "TRT_Lora_Loader": TRT_Lora_Loader,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
 	"TRT_Unet_Loader": "load Unet in TensorRT",
+	# "TRT_Lora_Loader": "load LoRA in TensorRT",
 }
 WEB_DIRECTORY = None
 

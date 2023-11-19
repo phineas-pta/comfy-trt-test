@@ -29,7 +29,7 @@ work-in-progress
 
 i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
 
-need CUDA version ≥ 11 (driver version > 450) & ComfyUI version later than commit `f12ec55`
+need CUDA version ≥ 11 (driver version > 450) & python version ≥ 3.10 & ComfyUI version later than commit `f12ec55`
 
 open ComfyUI python env
 ```

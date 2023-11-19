@@ -119,6 +119,7 @@ class TrtUnetWrapper_Base:
 	"""ComfyUI unet base, see comfy/model_base.py"""
 
 	def __init__(self, model_name: str, configs: list, lora_path: str):
+		self.model_name = model_name
 		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
 
 		baseline_model: str = configs[0]["config"].baseline_model

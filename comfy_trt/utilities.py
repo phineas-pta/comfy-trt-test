@@ -93,13 +93,6 @@ class Engine:
 		del self.tensors
 
 	def refit(self, onnx_path: str, onnx_refit_path: str, dump_refit_path: str | None = None) -> None:
-		def add_to_map(refit_dict: dict, name: str, values: np.ndarray):
-			if name in refit_dict:
-				assert refit_dict[name] is None
-				if values.dtype == np.int64 and len(values.shape) == 0:
-					values = np.int32(values)  # TODO: smarter conversion
-				refit_dict[name] = values
-
 		print(f"Refitting TensorRT engine with {onnx_refit_path} weights")
 		refit_nodes = gs.import_onnx(onnx.load(onnx_refit_path)).toposort().nodes
 
@@ -113,20 +106,18 @@ class Engine:
 				name_map[refit_node.outputs[0].name] = node.outputs[0].name
 			# Handle scale and bias weights
 			elif node.op == "Conv":
-				if node.inputs[1].__class__ == gs.Constant:
+				if isinstance(node.inputs[1], gs.Constant):
 					name_map[refit_node.name + "_TRTKERNEL"] = node.name + "_TRTKERNEL"
-				if node.inputs[2].__class__ == gs.Constant:
+				if isinstance(node.inputs[2], gs.Constant):
 					name_map[refit_node.name + "_TRTBIAS"] = node.name + "_TRTBIAS"
 			# For all other nodes: find node inputs that are initializers (gs.Constant)
 			else:
 				for i, inp in enumerate(node.inputs):
-					if inp.__class__ == gs.Constant:
+					if isinstance(inp, gs.Constant):
 						name_map[refit_node.inputs[i].name] = inp.name
 
 		def map_name(name):
-			if name in name_map:
-				return name_map[name]
-			return name
+			return name_map[name] if name in name_map else name
 
 		# Construct refit dictionary
 		refit_dict = {}
@@ -137,29 +128,36 @@ class Engine:
 			assert name not in refit_dict, "Found duplicate layer: " + name
 			refit_dict[name] = None
 
+		def add_to_map(name: str, values: np.ndarray) -> None:
+			if name in refit_dict:
+				assert refit_dict[name] is None
+				if values.dtype == np.int64 and len(values.shape) == 0:
+					values = np.int32(values)  # TODO: smarter conversion
+				refit_dict[name] = values
+
 		for n in refit_nodes:
 			# Constant nodes in ONNX do not have inputs but have a constant output
 			if n.op == "Constant":
 				name = map_name(n.outputs[0].name)
 				print(f"Add Constant {name}\n")
 				try:
-					add_to_map(refit_dict, name, n.outputs[0].values)
+					add_to_map(name, n.outputs[0].values)
 				except:
 					logging.error(f"Failed to add Constant {name}\n")
 
 			# Handle scale and bias weights
 			elif n.op == "Conv":
-				if n.inputs[1].__class__ == gs.Constant:
+				if isinstance(n.inputs[1], gs.Constant):
 					name = map_name(n.name + "_TRTKERNEL")
 					try:
-						add_to_map(refit_dict, name, n.inputs[1].values)
+						add_to_map(name, n.inputs[1].values)
 					except:
 						logging.error(f"Failed to add Conv {name}\n")
 
-				if n.inputs[2].__class__ == gs.Constant:
+				if isinstance(n.inputs[2], gs.Constant):
 					name = map_name(n.name + "_TRTBIAS")
 					try:
-						add_to_map(refit_dict, name, n.inputs[2].values)
+						add_to_map(name, n.inputs[2].values)
 					except:
 						logging.error(f"Failed to add Conv {name}\n")
 
@@ -167,8 +165,8 @@ class Engine:
 			else:
 				for inp in n.inputs:
 					name = map_name(inp.name)
-					if inp.__class__ == gs.Constant:
-						add_to_map(refit_dict, name, inp.values)
+					if isinstance(inp, gs.Constant):
+						add_to_map(name, inp.values)
 
 		if dump_refit_path is not None:
 			print("Finished refit. Dumping result to disk.")
@@ -213,6 +211,26 @@ class Engine:
 			print("Failed to refit!")
 			exit(0)
 
+	def refit_from_dict(self, refit_dict: dict) -> None:
+		refitter = trt.Refitter(self.engine, TRT_LOGGER)
+		all_weights = refitter.get_all()
+
+		# TODO ideally iterate over refit_dict as len(refit_dict) < len(all_weights)
+		for layer_name, weights_role in zip(all_weights[0], all_weights[1]):
+			custom_name = change_trt_layer_name(layer_name, weights_role)
+
+			# Skip refitting Trilu for now; scalar weights of type int64 value 1 - for clip model
+			if layer_name.startswith("onnx::Trilu"):
+				continue
+
+			if custom_name in refit_dict:
+				refitter.set_weights(layer_name, weights_role, refit_dict[custom_name])
+				print(f"[I] refit weights for layer: {layer_name}")
+
+		if not refitter.refit_cuda_engine():
+			print("Failed to refit!")
+			exit(0)
+
 	def build(
 		self,
 		onnx_path: str,
@@ -224,13 +242,16 @@ class Engine:
 		update_output_names: str | None = None,
 	) -> int:
 		print(f"Building TensorRT engine for {onnx_path}: {self.engine_path}")
-		p = [Profile()]
-		if input_profile:
-			p = [Profile() for i in range(len(input_profile))]
-			for _p, i_profile in zip(p, input_profile):
-				for name, dims in i_profile.items():
+		if input_profile is None:
+			p = [Profile()]
+		else:
+			p = []
+			for i_p in input_profile:
+				_p = Profile()
+				for name, dims in i_p.items():
 					assert len(dims) == 3
 					_p.add(name, min=dims[0], opt=dims[1], max=dims[2])
+				p.append(_p)
 
 		config_kwargs = {}
 		if not enable_all_tactics:
@@ -244,9 +265,8 @@ class Engine:
 		builder = network[0]
 		config = builder.create_builder_config()
 		# config.progress_monitor = TQDMProgressMonitor() # need tensorrt v9
-
-		config.set_flag(trt.BuilderFlag.FP16) if fp16 else None
-		config.set_flag(trt.BuilderFlag.REFIT) if enable_refit else None
+		if fp16: config.set_flag(trt.BuilderFlag.FP16)
+		if enable_refit: config.set_flag(trt.BuilderFlag.REFIT)
 
 		cache = None
 		try:
@@ -263,7 +283,6 @@ class Engine:
 			# Last profile is used for set_calibration_profile.
 			calib_profile = profile.fill_defaults(network[1]).to_trt(builder, network[1])
 			config.add_optimization_profile(calib_profile)
-
 
 		try:
 			engine = engine_from_network(network, config, save_timing_cache=timing_cache)
@@ -282,10 +301,11 @@ class Engine:
 		self.engine = engine_from_bytes(bytes_from_path(self.engine_path))
 
 	def activate(self, reuse_device_memory: bool = False) -> None:
-		if reuse_device_memory:
-			self.context = self.engine.create_execution_context_without_device_memory()
-		else:
-			self.context = self.engine.create_execution_context()
+		self.context = (
+			self.engine.create_execution_context_without_device_memory()
+			if reuse_device_memory
+			else self.engine.create_execution_context()
+		)
 
 	def allocate_buffers(self, shape_dict: dict = None, device: str = "cuda") -> None:
 		nvtx.range_push("allocate_buffers")
