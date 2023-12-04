@@ -40,26 +40,27 @@ class TRT_Unet_Loader:
 	FUNCTION = "load_trt"
 
 	@classmethod
-	def INPUT_TYPES(cls): return {"required": {
-		"engine_file": (list(LIST_ENGINES.keys()),),
-		################################################# test: convert directly in GUI
-		# "model" : ("MODEL",),
-		# "batch_min": ("INT", {"default": 1, "min": 1, "max": 16}),
-		# "batch_opt": ("INT", {"default": 1, "min": 1, "max": 16}),
-		# "batch_max": ("INT", {"default": 1, "min": 1, "max": 16}),
-		# "height_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
-		# "height_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
-		# "height_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
-		# "width_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
-		# "width_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
-		# "width_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
-		# "token_count_min": ("INT", {"default": 75, "min": 75, "max": 750}),
-		# "token_count_opt": ("INT", {"default": 75, "min": 75, "max": 750}),
-		# "token_count_max": ("INT", {"default": 75, "min": 75, "max": 750}),
-		# "force_export": ("BOOLEAN", {"default": False}),
-		# "static_shapes": ("BOOLEAN", {"default": False}),
-		# "use_float32": ("BOOLEAN", {"default": False}),
-	}}
+	def INPUT_TYPES(cls):
+		return {"required": {
+			"engine_file": (list(LIST_ENGINES.keys()),),
+			################################################# test: convert directly in GUI
+			# "model" : ("MODEL",),
+			# "batch_min": ("INT", {"default": 1, "min": 1, "max": 16}),
+			# "batch_opt": ("INT", {"default": 1, "min": 1, "max": 16}),
+			# "batch_max": ("INT", {"default": 1, "min": 1, "max": 16}),
+			# "height_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+			# "height_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+			# "height_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
+			# "width_min": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+			# "width_opt": ("INT", {"default": 512, "min": 256, "max": 4096, "step": 64}),
+			# "width_max": ("INT", {"default": 768, "min": 256, "max": 4096, "step": 64}),
+			# "token_count_min": ("INT", {"default": 75, "min": 75, "max": 750}),
+			# "token_count_opt": ("INT", {"default": 75, "min": 75, "max": 750}),
+			# "token_count_max": ("INT", {"default": 75, "min": 75, "max": 750}),
+			# "force_export": ("BOOLEAN", {"default": False}),
+			# "static_shapes": ("BOOLEAN", {"default": False}),
+			# "use_float32": ("BOOLEAN", {"default": False}),
+		}}
 
 	def load_trt(self, engine_file: str) -> tuple:
 		configs: list = LIST_ENGINES[engine_file]

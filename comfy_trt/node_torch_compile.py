@@ -10,14 +10,13 @@ import torch
 torch._dynamo.config.suppress_errors = True
 
 class TRT_Torch_Compile:
-	RETURN_TYPES = ("MODEL", )
+	RETURN_TYPES = ("MODEL",)
 	FUNCTION = "compile"
 	CATEGORY = "essentials"
 
 	@classmethod
-	def INPUT_TYPES(s): return {"required": {
-		"model": ("MODEL",),
-	}}
+	def INPUT_TYPES(s):
+		return {"required": {"model": ("MODEL",)}}
 
 	def compile(self, model):
 		model.model.diffusion_model = torch.compile(

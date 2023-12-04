@@ -60,6 +60,7 @@ def get_config_from_checkpoint(ckpt_path: str) -> dict:
 				"baseline_model": model_config.__qualname__,
 				"prediction_type": str(model.model_type),
 				"unet_hidden_dim": unet_config["in_channels"],
+				"embedding_dim": unet_config["context_dim"],
 			}
 
 
@@ -119,31 +120,28 @@ if __name__ == "__main__":
 	if args.static_shapes:
 		min_textlen = max_textlen = opt_textlen
 
-	if is_sdxl:
-		diable_optimizations = True
-		modelobj = OAIUNetXL(
-			version=baseline_model,
-			fp16=not args.float32,
-			device="cuda",
-			verbose=False,
-			max_batch_size=args.batch_max,
-			unet_dim=ckpt_config["unet_hidden_dim"],
-			text_optlen=opt_textlen,
-			text_maxlen=max_textlen,
-			num_classes=2560 if baseline_model == "SDXLRefiner" else 2816,
-		)
-	else:
-		diable_optimizations = False
-		modelobj = OAIUNet(
-			version=baseline_model,
-			fp16=not args.float32,
-			device="cuda",
-			verbose=False,
-			max_batch_size=args.batch_max,
-			text_optlen=opt_textlen,
-			text_maxlen=max_textlen,
-			unet_dim=ckpt_config["unet_hidden_dim"],
-		)
+	modelobj = OAIUNetXL(
+		version=baseline_model,
+		fp16=not args.float32,
+		device="cuda",
+		verbose=False,
+		max_batch_size=args.batch_max,
+		unet_dim=ckpt_config["unet_hidden_dim"],
+		embedding_dim=ckpt_config["embedding_dim"],
+		text_optlen=opt_textlen,
+		text_maxlen=max_textlen,
+		num_classes=2560 if baseline_model == "SDXLRefiner" else 2816,
+	) if is_sdxl else OAIUNet(
+		version=baseline_model,
+		fp16=not args.float32,
+		device="cuda",
+		verbose=False,
+		max_batch_size=args.batch_max,
+		text_optlen=opt_textlen,
+		text_maxlen=max_textlen,
+		unet_dim=ckpt_config["unet_hidden_dim"],
+		embedding_dim=ckpt_config["embedding_dim"],
+	)
 
 	profile = modelobj.get_input_profile(
 		args.batch_min, args.batch_opt, args.batch_max,
@@ -161,7 +159,7 @@ if __name__ == "__main__":
 			is_sdxl=is_sdxl,
 			modelobj=modelobj,
 			profile=profile,
-			disable_optimizations=diable_optimizations
+			disable_optimizations=is_sdxl
 		)
 		print("Exported to ONNX.")
 

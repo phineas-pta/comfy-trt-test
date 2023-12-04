@@ -99,20 +99,6 @@ class Optimizer:
 			return onnx_graph
 
 
-def get_unet_embedding_dim(version: str) -> int:
-	match version:
-		case "SD15":
-			return 768
-		case "SD20" | "SD21UnclipL" | "SD21UnclipH" | "SVD_img2vid":
-			return 1024
-		case "SDXL" | "SSD1B":
-			return 2048
-		case "SDXLRefiner":
-			return 1280
-		case _:
-			raise ValueError(f"Invalid version {version}")
-
-
 class BaseModelBis:  # change name to distingush from existing 1 in comfy
 	def __init__(
 		self,
@@ -217,7 +203,8 @@ class OAIUNet(BaseModelBis):
 		max_batch_size: int = 16,
 		text_maxlen: int = 77,
 		text_optlen: int = 77,
-		unet_dim: int = 4,  # 9 for inpaint model
+		unet_dim: int = 4,
+		embedding_dim: int = 768,
 	):
 		super().__init__(
 			version=version,
@@ -228,7 +215,7 @@ class OAIUNet(BaseModelBis):
 			text_maxlen=text_maxlen,
 			text_optlen=text_optlen,
 			unet_dim=unet_dim,
-			embedding_dim=get_unet_embedding_dim(version),
+			embedding_dim=embedding_dim,
 		)
 
 	def get_input_names(self) -> list[str]:
@@ -305,7 +292,8 @@ class OAIUNetXL(BaseModelBis):
 		max_batch_size: int = 16,
 		text_maxlen: int = 77,
 		text_optlen: int = 77,
-		unet_dim: int = 4,  # 9 for inpaint model
+		unet_dim: int = 4,
+		embedding_dim: int = 2048,
 		time_dim: int = 6,
 		num_classes: int = 2816,  # 2560 for refiner
 	):
@@ -318,7 +306,7 @@ class OAIUNetXL(BaseModelBis):
 			text_maxlen=text_maxlen,
 			text_optlen=text_optlen,
 			unet_dim=unet_dim,
-			embedding_dim=get_unet_embedding_dim(version),
+			embedding_dim=embedding_dim,
 		)
 		self.time_dim = time_dim
 		self.num_classes = num_classes
