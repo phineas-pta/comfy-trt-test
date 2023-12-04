@@ -16,7 +16,6 @@
 # - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/model_patcher.py
 # - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/model_base.py
 
-
 import os
 from numpy import argmin
 import torch
@@ -25,8 +24,8 @@ from torch.cuda import nvtx
 from .model_manager import TRT_MODEL_DIR, modelmanager
 from .utilities import Engine
 
-from comfy.model_base import ModelType, model_sampling
-from comfy.supported_models import models as LIST_MODELS
+from comfy.model_base import ModelType, model_sampling  # ModelType used in eval() - do not remove
+import comfy.supported_models as LIST_MODELS  # used in eval() - do not remove
 from comfy import model_management
 
 
@@ -75,6 +74,7 @@ class TRT_Unet_Loader:
 
 class TrtUnetWrapper_Patch:
 	"""ComfyUI unet patched, see comfy/model_patcher.py"""
+
 	def __init__(self, model_name: str, configs: list, lora_path: str):
 		self.model = TrtUnetWrapper_Base(model_name, configs, lora_path)
 		self.latent_format = self.model.latent_format
@@ -121,19 +121,8 @@ class TrtUnetWrapper_Base:
 	def __init__(self, model_name: str, configs: list, lora_path: str):
 		self.model_name = model_name
 		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
-
-		baseline_model: str = configs[0]["config"].baseline_model
-		for mod in LIST_MODELS:
-			if mod.__qualname__ == baseline_model:
-				self.model_config = mod
-				break
-
-		match configs[0]["config"].prediction_type:
-			case "ModelType.EPS":
-				self.model_type = ModelType.EPS
-			case "ModelType.V_PREDICTION":
-				self.model_type = ModelType.V_PREDICTION
-
+		self.model_config = eval("LIST_MODELS." + configs[0]["config"].baseline_model)  # e.g. "LIST_MODELS.SDXL"
+		self.model_type = eval(configs[0]["config"].prediction_type)  # e.g. "ModelType.EPS"
 		self.latent_format = self.model_config.latent_format()  # must init here
 		self.model_sampling = model_sampling(self.model_config, self.model_type)
 		self.adm_channels = self.model_config.unet_config.get("adm_in_channels", 0)

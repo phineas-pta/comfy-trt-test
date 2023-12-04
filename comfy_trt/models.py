@@ -103,9 +103,9 @@ def get_unet_embedding_dim(version: str) -> int:
 	match version:
 		case "SD15":
 			return 768
-		case "SD20" | "SD21UnclipL" | "SD21UnclipH":
+		case "SD20" | "SD21UnclipL" | "SD21UnclipH" | "SVD_img2vid":
 			return 1024
-		case "SDXL":
+		case "SDXL" | "SSD1B":
 			return 2048
 		case "SDXLRefiner":
 			return 1280

@@ -72,24 +72,24 @@ if __name__ == "__main__":
 		print("FP16 has been disabled because your GPU does not support it.")
 
 	baseline_model = ckpt_config["baseline_model"]
-	print(f"detected baseline model version: {baseline_model}")
-	is_sdxl = baseline_model in ["SDXL", "SDXLRefiner"]
+	print(f"\ndetected baseline model version: {baseline_model}")
+	is_sdxl = baseline_model in ["SDXL", "SDXLRefiner", "SSD1B"]  # re-used later
 
-	if baseline_model in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
-		if args.height_min is None: args.height_min = 512
-		if args.height_opt is None: args.height_opt = 512
-		if args.height_max is None: args.height_max = 768
-		if args.width_min is None: args.width_min = 512
-		if args.width_opt is None: args.width_opt = 512
-		if args.width_max is None: args.width_max = 768
-	elif is_sdxl:
+	if is_sdxl:
 		if args.height_min is None: args.height_min = 768
 		if args.height_opt is None: args.height_opt = 1024
 		if args.height_max is None: args.height_max = 1024
 		if args.width_min is None: args.width_min = 768
 		if args.width_opt is None: args.width_opt = 1024
 		if args.width_max is None: args.width_max = 1024
-	else:
+	elif baseline_model in ["SD15", "SD20", "SD21UnclipL", "SD21UnclipH"]:
+		if args.height_min is None: args.height_min = 512
+		if args.height_opt is None: args.height_opt = 512
+		if args.height_max is None: args.height_max = 768
+		if args.width_min is None: args.width_min = 512
+		if args.width_opt is None: args.width_opt = 512
+		if args.width_max is None: args.width_max = 768
+	else:  # ["SVD_img2vid"]
 		raise ValueError(f"{baseline_model} not yet supported")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:
