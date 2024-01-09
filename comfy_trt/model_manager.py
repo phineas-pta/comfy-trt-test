@@ -8,10 +8,10 @@ import hashlib
 import json
 import os
 import logging
-from dataclasses import dataclass
+import copy
 import torch
 
-from .exporter import get_cc
+from .datastructures import ModelConfig, ModelConfigEncoder
 
 
 BASE_PATH = os.path.dirname(os.path.realpath(__file__))
@@ -24,6 +24,10 @@ if not os.path.exists(TRT_MODEL_DIR):
 
 MODEL_FILE = os.path.join(TRT_MODEL_DIR, "model.json")
 
+
+def get_cc() -> tuple[int]:
+	res = torch.cuda.get_device_properties(int(os.getenv("CUDA_VISIBLE_DEVICES", 0)))
+	return res.major, res.minor
 cc_major, cc_minor = get_cc()
 
 
@@ -40,7 +44,7 @@ class ModelManager:
 
 	@staticmethod
 	def get_onnx_path(model_name: str) -> tuple[str]:
-		onnx_filename = model_name + ".onnx"
+		onnx_filename = f"{model_name}.onnx"
 		onnx_path = os.path.join(ONNX_MODEL_DIR, onnx_filename)
 		return onnx_filename, onnx_path
 
@@ -60,10 +64,13 @@ class ModelManager:
 
 		return trt_filename, trt_path
 
+	def get_weights_map_path(self, model_name: str):
+		return os.path.join(TRT_MODEL_DIR, f"{model_name}_weights_map.json")
+
 	def update(self) -> None:
 		trt_engines = [trt_file for trt_file in os.listdir(TRT_MODEL_DIR) if trt_file.endswith(".trt")]
 
-		tmp_all_models = self.all_models.copy()
+		tmp_all_models = copy.deepcopy(self.all_models)
 		for cc, base_models in tmp_all_models.items():
 			for base_model, models in base_models.items():
 				tmp_config_list = {}
@@ -90,11 +97,10 @@ class ModelManager:
 		prediction_type: str,
 		inpaint: bool,
 		refit: bool,
-		vram: int,
 		unet_hidden_dim: int,
 		lora: bool
 	) -> None:
-		config = ModelConfig(profile, static_shapes, fp32, baseline_model, prediction_type, inpaint, refit, lora, vram, unet_hidden_dim)
+		config = ModelConfig(profile, static_shapes, fp32, baseline_model, prediction_type, inpaint, refit, lora, unet_hidden_dim)
 		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
 
 		base_model_name = model_name
@@ -115,10 +121,9 @@ class ModelManager:
 		baseline_model: str,
 		prediction_type: str,
 		inpaint: bool,
-		vram: int,
 		unet_hidden_dim: int
 	) -> None:
-		config = ModelConfig([[], [], []], False, fp32, baseline_model, prediction_type, inpaint, True, True, vram, unet_hidden_dim)
+		config = ModelConfig([[], [], []], False, fp32, baseline_model, prediction_type, inpaint, True, True, unet_hidden_dim)
 		self.all_models[self.cc][lora_name] = [{"filepath": trt_lora_path, "base_model": base_model, "config": config}]
 		self.write_json()
 
@@ -142,6 +147,13 @@ class ModelManager:
 	def available_models(self) -> dict:
 		return self.all_models.get(self.cc, {})
 
+	def available_loras(self):
+		return {
+			os.path.splitext(p)[0]: os.path.join(TRT_MODEL_DIR, p)
+			for p in os.listdir(TRT_MODEL_DIR)
+			if p.endswith(".lora")
+		}
+
 	def get_timing_cache(self) -> str:
 		cache = os.path.join(
 			BASE_PATH,
@@ -151,10 +163,8 @@ class ModelManager:
 		return cache
 
 	def get_valid_models_from_dict(self, base_model: str, feed_dict: dict) -> tuple[list[bool], list[float]]:
-		valid_models = []
-		distances = []
-		models = self.available_models()
-		for model in models[base_model]:
+		valid_models, distances = [], []
+		for model in self.available_models()[base_model]:
 			valid, distance = model["config"].is_compatible_from_dict(feed_dict)
 			if valid:
 				valid_models.append(model)
@@ -162,74 +172,14 @@ class ModelManager:
 		return valid_models, distances
 
 	def get_valid_models(self, base_model: str, width: int, height: int, batch_size: int, max_embedding: int) -> tuple[list[bool], list[float]]:
-		valid_models = []
-		distances = []
-		models = self.available_models()
-		for model in models[base_model]:
+		valid_models, distances, idx = [], [], []
+		for i, model in enumerate(self.available_models()[base_model]):
 			valid, distance = model["config"].is_compatible(width, height, batch_size, max_embedding)
 			if valid:
 				valid_models.append(model)
 				distances.append(distance)
-		return valid_models, distances
-
-
-@dataclass
-class ModelConfig:
-	profile: dict
-	static_shapes: bool = False
-	fp32: bool = False
-	baseline_model: str = "SD15"  # save model info, for values see `comfy/supported_models.py`, breaking change incompatible A1111
-	prediction_type: str = "ModelType.EPS"  # save model info, for values see `comfy/model_base.py`, breaking change incompatible A1111
-	inpaint: bool = False
-	refit: bool = False
-	lora: bool = False
-	vram: int = 0
-	unet_hidden_dim: int = 4
-
-	def is_compatible_from_dict(self, feed_dict: dict) -> tuple[bool, float]:
-		distance = 0
-		for k, v in feed_dict.items():
-			_min, _opt, _max = self.profile[k]
-			v_tensor = torch.Tensor(list(v.shape))
-			r_min = torch.Tensor(_max) - v_tensor
-			r_opt = (torch.Tensor(_opt) - v_tensor).abs()
-			r_max = v_tensor - torch.Tensor(_min)
-			if torch.any(r_min < 0) or torch.any(r_max < 0):
-				return False, distance
-			distance += r_opt.sum() + 0.5 * (r_max.sum() + 0.5 * r_min.sum())
-		return True, distance
-
-	def is_compatible(self, width: int, height: int, batch_size: int, max_embedding: int) -> tuple[bool, float]:
-		distance = 0
-		sample = self.profile["sample"]
-		embedding = self.profile["encoder_hidden_states"]
-
-		batch_size *= 2
-		width //=  8
-		height //= 8
-
-		_min, _opt, _max = sample
-		_min_em, _opt_em, _max_em = embedding
-		if (
-			_min[0] > batch_size or _max[0] < batch_size
-			or _min[2] > height or _max[2] < height
-			or _min[3] > width or _max[3] < width
-			or _min_em[1] > max_embedding or _max_em[1] < max_embedding
-		):
-			return False, distance
-
-		distance = (
-			abs(_opt[0] - batch_size)
-			+ abs(_opt[2] - height)
-			+ abs(_opt[3] - width)
-			+ 0.5 * (abs(_max[2] - height) + abs(_max[3] - width))
-		)
-		return True, distance
-
-
-class ModelConfigEncoder(json.JSONEncoder):
-	def default(self, o: ModelConfig) -> dict:
-		return o.__dict__
+				idx.append(i)
+		return valid_models, distances, idx
 
 
 modelmanager = ModelManager()

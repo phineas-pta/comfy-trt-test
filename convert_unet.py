@@ -11,8 +11,9 @@ import gc
 import torch
 
 from comfy_trt.exporter import export_onnx, export_trt
-from comfy_trt.models import OAIUNet, OAIUNetXL
+from comfy_trt.model_helper import UNetModel
 from comfy_trt.model_manager import modelmanager, cc_major
+from comfy_trt.datastructures import ProfileSettings
 
 sys.path.append(os.path.join("..", ".."))
 from comfy.utils import load_torch_file, calculate_parameters
@@ -74,7 +75,7 @@ if __name__ == "__main__":
 
 	baseline_model = ckpt_config["baseline_model"]
 	print(f"\ndetected baseline model version: {baseline_model}")
-	is_sdxl = baseline_model in ["SDXL", "SDXLRefiner", "SSD1B"]  # re-used later
+	is_sdxl = baseline_model in ["SDXL", "SDXLRefiner", "SSD1B", "Segmind_Vega"]  # re-used later
 
 	if is_sdxl:
 		if args.height_min is None: args.height_min = 768
@@ -90,7 +91,7 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	else:  # ["SVD_img2vid"]
+	else:  # ["SVD_img2vid", "Stable_Zero123", "SD_X4Upscaler"]
 		raise ValueError(f"{baseline_model} not yet supported")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:
@@ -99,74 +100,39 @@ if __name__ == "__main__":
 		raise ValueError("need min ≤ opt ≤ max")
 	if args.height_min < 256 or args.height_max > 4096 or args.width_min < 256 or args.width_max > 4096:
 		raise ValueError("height and width out of limit")
-	print(
-		"[I] size & shape parameters:",
-		f"- {args.batch_min=}, {args.batch_opt=}, {args.batch_max=}",
-		f"- {args.height_min=}, {args.height_opt=}, {args.height_max=}",
-		f"- {args.width_min=}, {args.width_opt=}, {args.width_max=}",
-		f"- {args.token_count_min=}, {args.token_count_opt=}, {args.token_count_max=}",
-		sep="\n    ", end="\n\n"
-	)
 
+	ckpt_file = os.path.basename(args.ckpt_path)
 	if args.output_name is None:  # default to ckpt file name
-		args.output_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
+		args.output_name = os.path.splitext(ckpt_file)[0]
 	onnx_filename, onnx_path = modelmanager.get_onnx_path(args.output_name)
-	print(f"Exporting {args.output_name} to TensorRT")
+	print(f"Exporting {ckpt_file} to TensorRT")
 	timing_cache = modelmanager.get_timing_cache()
 
-	min_textlen = (args.token_count_min // 75) * 77
-	opt_textlen = (args.token_count_opt // 75) * 77
-	max_textlen = (args.token_count_max // 75) * 77
-	if args.static_shapes:
-		min_textlen = max_textlen = opt_textlen
-
-	modelobj = OAIUNetXL(
-		version=baseline_model,
-		fp16=not args.float32,
-		device="cuda",
-		verbose=False,
-		max_batch_size=args.batch_max,
-		unet_dim=ckpt_config["unet_hidden_dim"],
-		embedding_dim=ckpt_config["embedding_dim"],
-		text_optlen=opt_textlen,
-		text_maxlen=max_textlen,
-		num_classes=2560 if baseline_model == "SDXLRefiner" else 2816,
-	) if is_sdxl else OAIUNet(
-		version=baseline_model,
-		fp16=not args.float32,
-		device="cuda",
-		verbose=False,
-		max_batch_size=args.batch_max,
-		text_optlen=opt_textlen,
-		text_maxlen=max_textlen,
-		unet_dim=ckpt_config["unet_hidden_dim"],
-		embedding_dim=ckpt_config["embedding_dim"],
-	)
-
-	profile = modelobj.get_input_profile(
+	profile_settings = ProfileSettings(
 		args.batch_min, args.batch_opt, args.batch_max,
 		args.height_min, args.height_opt, args.height_max,
 		args.width_min, args.width_opt, args.width_max,
-		args.static_shapes,
+		args.token_count_min, args.token_count_opt, args.token_count_max,
+		args.static_shapes
 	)
-	print(profile)
+	print(profile_settings, end="\n\n")
+	profile_settings.token_to_dim()
 
-	if not os.path.exists(onnx_path):
-		print("No ONNX file found. Exporting ONNX …")
-		export_onnx(
-			ckpt_config["model"],
-			onnx_path,
-			is_sdxl=is_sdxl,
-			modelobj=modelobj,
-			profile=profile,
-			disable_optimizations=is_sdxl
-		)
-		print("Exported to ONNX.")
+	modelobj = UNetModel(
+		unet=ckpt_config["model"],
+		version=baseline_model,
+		unet_dim=ckpt_config["unet_hidden_dim"],
+		embedding_dim=ckpt_config["embedding_dim"],
+		text_minlen=profile_settings.t_min
+	)
+	profile = modelobj.get_input_profile(profile_settings)
+
+	export_onnx(onnx_path, modelobj, profile_settings, disable_optimizations=is_sdxl)
 
 	trt_engine_filename, trt_path = modelmanager.get_trt_path(args.output_name, profile, args.static_shapes)
 
 	# claim VRAM for TensorRT
-	del ckpt_config["model"]
+	del ckpt_config["model"], modelobj.unet
 	gc.collect()
 	torch.cuda.empty_cache()
 
@@ -187,7 +153,6 @@ if __name__ == "__main__":
 				prediction_type=ckpt_config["prediction_type"],  # breaking change incompatible A1111
 				inpaint=ckpt_config["unet_hidden_dim"] > 4,
 				refit=True,
-				vram=0,
 				unet_hidden_dim=ckpt_config["unet_hidden_dim"],
 				lora=False,
 			)

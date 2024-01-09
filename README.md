@@ -12,12 +12,14 @@ no lora support yet as i wait for better upstream update coz current way of usin
 
 very limited usefulness as no additionnal features supported in upstream (controlnet, ipadapter, hypernetwork, freeu, etc.)
 
+this repo is a ComfyUI port from the official A1111 extension, of which the codebase is increasingly intertwined with A1111 so it’s becoming difficult for me to adapt it to ComfyUI, in case i decide to stop maintaining this repo, please check out https://github.com/gameltb/ComfyUI_stable_fast
+
 ## TODO
 
 work-in-progress
 - [x] conversion script in CLI
 - [x] add new loader node
-- [ ] support for LCM & SVD
+- [ ] support for LCM & SVD & Zero123
 - [ ] keep model in VRAM after use
 - [ ] conversion in GUI (rewrite loader node)
 - [ ] re-use engine from A1111 (conversion in GUI)
@@ -30,7 +32,7 @@ work-in-progress
 
 i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
 
-need CUDA version ≥ 11 (driver version > 450) & python version ≥ 3.10 & ComfyUI version later than commit `61a123a`
+need CUDA version ≥ 11 (driver version > 450) & python version ≥ 3.10 & ComfyUI version later than commit `b3b5ddb`
 
 open ComfyUI python env
 ```
@@ -107,6 +109,8 @@ when convert checkpoint to tensorrt engine, those messages below are not critica
 [E] 2: [virtualMemoryBuffer.cpp::nvinfer1::StdVirtualMemoryBufferImpl::resizePhysical::140] Error Code 2: OutOfMemory (no further information)
 
 [E] 1: [myelinCache.h::nvinfer1::builder::MyelinCache::deserializeFromBuffer::52] Error Code 1: Myelin (Myelin error from unknown graph)
+
+[E] 1: [stdArchiveReader.cpp::nvinfer1::rt::StdArchiveReader::StdArchiveReaderInitCommon::46] Error Code 1: Serialization (Serialization assertion stdVersionRead == serializationVersion failed.Version tag does not match. Note: Current Version: ███, Serialized Engine Version: ███)
 
 [E] 4: The timing cache will not be used!
 ```

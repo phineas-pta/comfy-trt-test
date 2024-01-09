@@ -17,7 +17,6 @@
 # - https://github.com/comfyanonymous/ComfyUI/blob/master/comfy/model_base.py
 
 import os
-from numpy import argmin
 import torch
 from torch.cuda import nvtx
 
@@ -70,14 +69,14 @@ class TRT_Unet_Loader:
 		else:
 			model_name = engine_file
 			lora_path = None
-		return (TrtUnetWrapper_Patch(model_name, configs, lora_path),)
+		return (TrtUnetWrapper_Patch(model_name, configs),)
 
 
 class TrtUnetWrapper_Patch:
 	"""ComfyUI unet patched, see comfy/model_patcher.py"""
 
-	def __init__(self, model_name: str, configs: list, lora_path: str):
-		self.model = TrtUnetWrapper_Base(model_name, configs, lora_path)
+	def __init__(self, model_name: str, configs: list):
+		self.model = TrtUnetWrapper_Base(model_name, configs)
 		self.latent_format = self.model.latent_format
 		self.model_sampling = self.model.model_sampling
 		self.current_device = self.offload_device = "cpu"
@@ -94,12 +93,11 @@ class TrtUnetWrapper_Patch:
 		return self.latent_format.process_out(latent)
 
 	def is_clone(self, other) -> bool:
-		if hasattr(other, "model") and self.model is other.model:
-			return True
-		else:
-			return False
+		return hasattr(other, "model") and self.model is other.model
 
 	def model_size(self) -> int:  # get file size as workaround, but incorrect if engine built with batch size > 1
+		if self.model.diffusion_model.engine is None:
+			self.model.diffusion_model.activate()
 		return os.stat(self.model.diffusion_model.engine.engine_path).st_size
 
 	def memory_required(self, input_shape: torch.Size) -> float:
@@ -109,7 +107,7 @@ class TrtUnetWrapper_Patch:
 		pass
 
 	def patch_model(self, device_to: torch.device = None) -> None:
-		if self.model.diffusion_model.engine.engine is None:
+		if self.model.diffusion_model.engine is None:
 			self.model.diffusion_model.activate()
 
 	def unpatch_model(self, device_to: torch.device = None) -> None:
@@ -119,9 +117,9 @@ class TrtUnetWrapper_Patch:
 class TrtUnetWrapper_Base:
 	"""ComfyUI unet base, see comfy/model_base.py"""
 
-	def __init__(self, model_name: str, configs: list, lora_path: str):
+	def __init__(self, model_name: str, configs: list):
 		self.model_name = model_name
-		self.diffusion_model = TrtUnet(model_name, configs, lora_path)
+		self.diffusion_model = TrtUnet(model_name, configs)
 		self.model_config = eval("LIST_MODELS." + configs[0]["config"].baseline_model)  # e.g. "LIST_MODELS.SDXL"
 		self.model_type = eval(configs[0]["config"].prediction_type)  # e.g. "ModelType.EPS"
 		self.latent_format = self.model_config.latent_format()  # must init here
@@ -167,15 +165,15 @@ class TrtUnetWrapper_Base:
 class TrtUnet:
 	"""A1111 unet, see A1111 TensorRT >>> trt.py"""
 
-	def __init__(self, model_name: str, configs: list[dict], lora_path: str):
+	def __init__(self, model_name: str, configs: list[dict]):
 		self.configs = configs
 		self.stream = None
 		self.model_name = model_name
-		self.lora_path = lora_path
 		self.engine_vram_req = 0
-		self.loaded_config = self.configs[0]
-		self.shape_hash = 0
-		self.engine = Engine(os.path.join(TRT_MODEL_DIR, self.loaded_config["filepath"]))
+		self.profile_idx = 0
+		self.loaded_config = None
+		self.refitted_keys = set()
+		self.engine = None
 
 	def forward(self, x: torch.Tensor, timesteps: torch.Tensor, context: torch.Tensor, *args, **kwargs) -> torch.Tensor:
 		"""
@@ -203,15 +201,6 @@ class TrtUnet:
 		if "y" in kwargs:
 			feed_dict["y"] = kwargs["y"].float()
 
-		# Need to check compatability on the fly
-		if self.shape_hash != hash(x.shape):
-			nvtx.range_push("switch_engine")
-			if x.shape[-1] % 8 != 0 or x.shape[-2] % 8 != 0:  # not 64 here coz latent
-				raise ValueError("Input shape must be divisible by 64 in both dimensions.")
-			self.switch_engine(feed_dict)
-			self.shape_hash = hash(x.shape)
-			nvtx.range_pop()
-
 		tmp = torch.empty(self.engine_vram_req, dtype=torch.uint8, device="cuda")
 		self.engine.context.device_memory = tmp.data_ptr()
 		self.stream = torch.cuda.current_stream().cuda_stream
@@ -221,29 +210,29 @@ class TrtUnet:
 		nvtx.range_pop()
 		return out
 
-	def switch_engine(self, feed_dict: dict) -> None:
-		valid_models, distances = modelmanager.get_valid_models_from_dict(self.model_name, feed_dict)
-		if len(valid_models) == 0:
-			raise ValueError("No valid profile found.") # TODO: SDXL cannot get valid models
+	def apply_loras(self, refit_dict: dict):
+		if not self.refitted_keys.issubset(set(refit_dict.keys())):
+			# Need to ensure that weights that have been modified before and are not present anymore are reset.
+			self.refitted_keys = set()
+			self.switch_engine()
 
-		best = valid_models[argmin(distances)]
-		if best["filepath"] == self.loaded_config["filepath"]:
-			return
-		self.deactivate()
-		self.engine = Engine(os.path.join(TRT_MODEL_DIR, best["filepath"]))
+		self.engine.refit_from_dict(refit_dict, is_fp16=True)
+		self.refitted_keys = set(refit_dict.keys())
+
+	def switch_engine(self):
+		self.loaded_config = self.configs[self.profile_idx]
+		self.engine.reset(os.path.join(TRT_MODEL_DIR, self.loaded_config["filepath"]))
 		self.activate()
-		self.loaded_config = best
 
-	def activate(self) -> None:
+	def activate(self):
+		self.loaded_config = self.configs[self.profile_idx]
+		if self.engine is None:
+			self.engine = Engine(os.path.join(TRT_MODEL_DIR, self.loaded_config["filepath"]))
 		self.engine.load()
+		print(f"\nLoaded Profile: {self.profile_idx}")
 		self.engine_vram_req = self.engine.engine.device_memory_size
 		self.engine.activate(True)
 
-		if self.lora_path is not None:
-			self.engine.refit_from_dump(self.lora_path)
-
-	def deactivate(self) -> None:
-		self.shape_hash = 0
-		backup = self.engine.engine_path
+	def deactivate(self):
 		del self.engine
-		self.engine = Engine(backup)
+		self.engine = None
