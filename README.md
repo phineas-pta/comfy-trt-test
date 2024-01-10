@@ -32,7 +32,7 @@ work-in-progress
 
 i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
 
-need CUDA version ≥ 11 (driver version > 450) & python version ≥ 3.10 & ComfyUI version later than commit `b3b5ddb`
+need CUDA version ≥ 12 (driver version > 525) & python version ≥ 3.10 & ComfyUI version later than commit `b3b5ddb`
 
 open ComfyUI python env
 ```
@@ -40,14 +40,28 @@ pip install colored onnx
 pip install onnx-graphsurgeon polygraphy --extra-index-url https://pypi.ngc.nvidia.com
 ```
 
-install TensorRT:
+**for LoRA support must use TensorRT python wheel version ≥ 9 (currently pre-release)**
+
+### 🔖 install TensorRT stable version (v8):
+
+i keep this option only for backward-compatibility, will be removed once v9 officially released
+
 - on linux: `pip install tensorrt`
 - on windows: follow my guide to install TensorRT & python wheel: https://github.com/phineas-pta/NVIDIA-win/blob/main/NVIDIA-win.md
-- alternatively, use the pre-release version: `pip install --pre tensorrt==9.0.1.post11.dev4 --extra-index-url https://pypi.nvidia.com --no-cache-dir`
+
+### 🔖 install TensorRT pre-release version (v9):
+```
+pip install --pre --extra-index-url https://pypi.nvidia.com tensorrt
+```
+**on windows** if u already followed my guide above to install TensorRT at system-level (v8 doesn’t matter), this command is faster `pip install --no-deps --pre --extra-index-url https://pypi.nvidia.com tensorrt tensorrt_bindings`
+
+verify version: `pip show tensorrt`
+
+### 🔖 clone this repo
 
 navigate console to folder `custom_nodes/` and git clone this repo
 
-on windows need additional steps:
+**on windows** need additional steps:
 ```batchfile
 cd comfy-trt-test\comfy_trt\timing_caches
 git update-index --skip-worktree timing_cache_win_cc75.cache
@@ -135,13 +149,13 @@ original implementation:
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5487/~/tensorrt-extension-for-stable-diffusion-web-ui
 - https://nvidia.custhelp.com/app/answers/detail/a_id/5490/~/system-memory-fallback-for-stable-diffusion
 
-how to write node:
+how to write unet node:
 - 1 node with all (unet + sampler) like https://github.com/0xbitches/ComfyUI-LCM/blob/main/nodes.py
 - unet CoreML like https://github.com/aszc-dev/ComfyUI-CoreMLSuite/blob/main/coreml_suite/models.py
 - unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
 - unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
 
-original checkpoints:
+testing with original checkpoints:
 - SD 1.4: https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/blob/main/sd-v1-4.ckpt
 - SD 1.5: https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors
 - SD 2.0: https://huggingface.co/stabilityai/stable-diffusion-2/blob/main/768-v-ema.safetensors

@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 
-# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/lora_v2/scripts/lora.py
+# modified from https://github.com/NVIDIA/Stable-Diffusion-WebUI-TensorRT/blob/main/scripts/lora.py
 # combined with https://github.com/LucianoCirino/efficiency-nodes-comfyui/blob/main/efficiency_nodes.py >>> TSC_LoRA_Stacker
 # STATUS: draft !!! still require onnx + engine built with lora
 
 # cannot map lora state dict to unet state dict coz onnx export mess up all state dict keys
 
-import onnx_graphsurgeon as gs
+import numpy as np
 import onnx
+import torch
 from torch.cuda import nvtx
 
-from .model_manager import modelmanager
+from .model_manager import ONNX_MODEL_DIR, modelmanager
 
 import folder_paths  # comfy stuff
 from comfy.utils import load_torch_file
@@ -29,7 +30,7 @@ class TRT_Lora_Loader:
 		loras = ["None"] + folder_paths.get_filename_list("loras")
 		inputs = {"required": {
 			"trt_unet_model": ("MODEL",),  # object from TrtUnetWrapper_Patch
-			"lora_count": ("INT", {"default": min_val, "min": min_val, "max": max_val, "step": 1}),
+			"LORA_COUNT": ("INT", {"default": min_val, "min": min_val, "max": max_val, "step": 1}),
 		}}
 
 		for i in range(min_val, max_val + 1):
@@ -40,20 +41,18 @@ class TRT_Lora_Loader:
 
 		return inputs
 
-	def lora_stacker(self, trt_unet_model, lora_count, **kwargs):
-		_, onnx_base_path = modelmanager.get_onnx_base_path(trt_unet_model.model.model_name)
+	def lora_stacker(self, trt_unet_model, LORA_COUNT, **kwargs):
+		_, onnx_base_path = modelmanager.get_onnx_path(trt_unet_model.model.model_name)
 		loras_list: list[tuple[str, float]] = [
 			(name, kwargs.get(f"lora_wt_{i+1}"))
-			for i in range(lora_count)
+			for i in range(LORA_COUNT)
 			if (name := kwargs.get(f"lora_name_{i+1}")) != "None"
 		]
-		refit_dict = apply_loras(onnx_base_path, loras_list)
+		refit_dict = apply_loras(onnx_base_path, loras_list)  # see def below
 
-		if trt_unet_model.model.diffusion_model.engine.engine is None:
+		if trt_unet_model.model.diffusion_model.engine is None:
 			trt_unet_model.model.diffusion_model.activate()
-		nvtx.range_push("refit")
-		trt_unet_model.model.diffusion_model.engine.refit_from_dict(refit_dict)
-		nvtx.range_pop()
+		trt_unet_model.model.diffusion_model.apply_loras(refit_dict)  # see node_unet.py >>> class TrtUnet
 		return (trt_unet_model,)
 
 
@@ -62,29 +61,15 @@ def apply_loras(onnx_base_path: str, loras_list: list[tuple[str, float]]) -> dic
 	for lora, weight in loras_list:
 		lora_dict = load_torch_file(folder_paths.get_full_path("loras", lora))
 		for k, v in lora_dict.items():
-			print(k)
 			if k in refit_dict:
 				refit_dict[k] += weight * v
 			else:
 				refit_dict[k] = weight * v
-
-	base = gs.import_onnx(onnx.load(onnx_base_path)).toposort()
-	for n in base.nodes:
-		if n.op == "Constant" and (name := n.outputs[0].name) in refit_dict:
-			refit_dict[name] += n.outputs[0].values
-
-		# Handle scale and bias weights
-		elif n.op == "Conv":
-			if isinstance(n.inputs[1], gs.Constant) and (name := n.name + "_TRTKERNEL") in refit_dict:
-				refit_dict[name] += n.outputs[1].values
-
-			if isinstance(n.inputs[2], gs.Constant) and (name := n.name + "_TRTBIAS") in refit_dict:
-				refit_dict[name] += n.outputs[2].values
-
-		# For all other nodes: find node inputs that are initializers (AKA gs.Constant)
-		else:
-			for inp in n.inputs:
-				if isinstance(inp, gs.Constant) and (name := inp.name) in refit_dict:
-					refit_dict[name] += inp.values
-
+	base = onnx.load(onnx_base_path)
+	for initializer in base.graph.initializer:
+		if initializer.name in refit_dict:
+			wt = refit_dict[initializer.name]
+			initializer_data = onnx.numpy_helper.to_array(initializer, base_dir=ONNX_MODEL_DIR).astype(np.float16)
+			delta = torch.tensor(initializer_data).to(wt.device) + wt
+			refit_dict[initializer.name] = delta.contiguous()
 	return refit_dict
