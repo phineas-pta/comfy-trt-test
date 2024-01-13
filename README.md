@@ -6,9 +6,22 @@ not automatic yet, do not use `ComfyUI-Manager` to install !!! read below instru
 
 instructions not beginner-friendly yet, still intended for advanced users
 
-i only tested baseline models (SD 1.5 - 2.1 - XL - SSD-1B - Turbo work) with simplest workflow, need further testing for complex workflow
+i only tested baseline models with simplest workflow, need further testing for complex workflow
 
-no lora support yet as i wait for better upstream update coz current way of using lora is too cumbersome (only 1 lora at strength 1.0)
+working:
+- Stable Diffusion 1.4-1.5
+- Stable Diffusion 2.0-2.1
+- Stable Diffusion XL
+- Segmind Stable Diffusion SSD-1B
+
+may or may not work depends on your luck:
+- SDXL Turbo see #4 #5
+- Lora (i believe i got this but it needs more testing)
+
+not working:
+- ControlNet / IPAdapter / etc.
+- Stable Video Diffusion
+- Stable Zero 123
 
 very limited usefulness as no additionnal features supported in upstream (controlnet, ipadapter, hypernetwork, freeu, etc.)
 
