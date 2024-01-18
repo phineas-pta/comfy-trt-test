@@ -15,10 +15,12 @@ working:
 - Segmind Stable Diffusion SSD-1B
 
 may or may not work depends on your luck:
-- SDXL Turbo see #4 #5
+- SDXL Turbo see #4
 - Lora (i believe i got this but it needs more testing)
 
 not working:
+- `xformers` see #5
+- SDXL with batch size max > 1 see #7
 - ControlNet / IPAdapter / etc.
 - Stable Video Diffusion
 - Stable Zero 123
@@ -45,7 +47,7 @@ work-in-progress
 
 i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
 
-need CUDA version ≥ 12 (driver version > 525) & python version ≥ 3.10 & ComfyUI version later than commit `b3b5ddb`
+need CUDA version ≥ 12 (driver version > 525) & python version ≥ 3.10 & ComfyUI version later than commit `d76a04b`
 
 open ComfyUI python env
 ```

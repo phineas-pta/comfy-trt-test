@@ -106,7 +106,7 @@ class TrtUnetWrapper_Patch:
 	def model_patches_to(self, device: torch.dtype | torch.device) -> None:
 		pass
 
-	def patch_model(self, device_to: torch.device = None) -> None:
+	def patch_model(self, device_to: torch.device = None, patch_weights: bool = True) -> None:
 		if self.model.diffusion_model.engine is None:
 			self.model.diffusion_model.activate()
 
