@@ -16,10 +16,9 @@ from comfy_trt.model_manager import modelmanager, cc_major
 from comfy_trt.datastructures import ProfileSettings
 
 sys.path.append(os.path.join("..", ".."))
-from comfy.utils import load_torch_file, calculate_parameters
+from comfy.utils import load_torch_file
 from comfy.supported_models import models as LIST_MODELS
 from comfy.model_detection import detect_unet_config
-from comfy.model_management import unet_dtype as get_unet_dtype
 
 
 def parseArgs():
@@ -48,9 +47,7 @@ def get_config_from_checkpoint(ckpt_path: str) -> dict:
 	"""see comfy/sd.py >>> load_checkpoint_guess_config"""
 	tmp0 = "model.diffusion_model."
 	sd = load_torch_file(ckpt_path)
-	parameters = calculate_parameters(sd, tmp0)
-	unet_dtype = get_unet_dtype(model_params=parameters)
-	unet_config = detect_unet_config(sd, tmp0, unet_dtype)
+	unet_config = detect_unet_config(sd, tmp0)
 	for model_config in LIST_MODELS:
 		if model_config.matches(unet_config):
 			tmp1 = model_config(unet_config)
@@ -91,7 +88,7 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	else:  # ["SVD_img2vid", "Stable_Zero123", "SD_X4Upscaler"]
+	else:  # ["SVD_img2vid", "Stable_Zero123", "SD_X4Upscaler", "Stable_Cascade_C", "Stable_Cascade_B"]
 		raise ValueError(f"{baseline_model} not yet supported")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:

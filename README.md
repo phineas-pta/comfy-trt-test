@@ -24,6 +24,7 @@ not working:
 - ControlNet / IPAdapter / etc.
 - Stable Video Diffusion
 - Stable Zero 123
+- Stable Cascade
 
 very limited usefulness as no additionnal features supported in upstream (controlnet, ipadapter, hypernetwork, freeu, etc.)
 
@@ -47,7 +48,7 @@ work-in-progress
 
 i’ll add a proper `requirements.txt` when tensorrt v9 get stable release
 
-need CUDA version ≥ 12 (driver version > 525) & python version ≥ 3.10 & ComfyUI version later than commit `d76a04b`
+need CUDA version ≥ 12 (driver version > 525) & python version ≥ 3.10 & ComfyUI version later than commit `6c875d8`
 
 open ComfyUI python env
 ```
