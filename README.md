@@ -108,6 +108,8 @@ for now no LoRA nor ControlNet support yet
 
 engine files created in `comfy-trt-test/comfy_trt/Unet-trt/`
 
+**do not delete onnx files**, they are needed for lora support
+
 ## 3️⃣ usage in ComfyUI
 
 add node → “advanced” → “loaders” → “load Unet in TensorRT” → replace “model” in normal checkpoint loader when connect to KSampler
@@ -171,6 +173,9 @@ how to write unet node:
 - unet loader like https://github.com/city96/ComfyUI_ExtraModels/blob/main/DiT/loader.py
 - unet AITemplate like https://github.com/FizzleDorf/ComfyUI-AIT/blob/main/ait_load.py
 
+<details>
+<summary>download links</summary>
+
 testing with original checkpoints:
 - SD 1.4: https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/blob/main/sd-v1-4.ckpt
 - SD 1.5: https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors
@@ -180,8 +185,12 @@ testing with original checkpoints:
 - SDXL refiner: https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors
 - SVD: https://huggingface.co/stabilityai/stable-video-diffusion-img2vid/blob/main/svd.safetensors
 - SVD xt: https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt/blob/main/svd_xt.safetensors
+- SVD xt 1.1: https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1/blob/main/svd_xt_1_1.safetensors
 - SD turbo: https://huggingface.co/stabilityai/sd-turbo/blob/main/sd_turbo.safetensors
 - SDXL turbo: https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors
+- Stable Cascade: https://huggingface.co/stabilityai/stable-cascade/tree/main
+- Stable Zero 123: https://huggingface.co/stabilityai/stable-zero123/blob/main/stable_zero123.ckpt
+- TripoSR: https://huggingface.co/stabilityai/TripoSR/blob/main/model.ckpt
 
 where to download separated CLIP & VAE without checkpoint:
 - CLIP:
@@ -196,3 +205,4 @@ where to download separated CLIP & VAE without checkpoint:
   - https://huggingface.co/stabilityai/sdxl-vae/blob/main/sdxl_vae.safetensors (float32)
   - https://huggingface.co/stabilityai/sd-vae-ft-ema-original/blob/main/vae-ft-ema-560000-ema-pruned.safetensors (float32)
   - https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors (float32)
+</details>

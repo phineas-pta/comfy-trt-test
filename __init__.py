@@ -11,7 +11,7 @@
 # for more specifications see https://github.com/ltdrdata/ComfyUI-Manager
 
 from .comfy_trt.node_unet import TRT_Unet_Loader
-from .comfy_trt.node_lora import TRT_Lora_Loader  # not working yet
+from .comfy_trt.node_lora import TRT_Lora_Loader
 # from .comfy_trt.node_torch_compile import TRT_Torch_Compile  # not working yet
 
 

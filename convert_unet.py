@@ -88,7 +88,8 @@ if __name__ == "__main__":
 		if args.width_min is None: args.width_min = 512
 		if args.width_opt is None: args.width_opt = 512
 		if args.width_max is None: args.width_max = 768
-	else:  # ["SVD_img2vid", "Stable_Zero123", "SD_X4Upscaler", "Stable_Cascade_C", "Stable_Cascade_B"]
+	else:  # ["SVD_img2vid", "Stable_Zero123", "SD_X4Upscaler", "Stable_Cascade_B", "Stable_Cascade_C", "KOALA_700M", "KOALA_1B",]
+
 		raise ValueError(f"{baseline_model} not yet supported")
 
 	if args.height_min % 64 != 0 or args.height_opt % 64 != 0 or args.height_max % 64 != 0 or args.width_min % 64 != 0 or args.width_opt % 64 != 0 or args.width_max % 64 != 0:

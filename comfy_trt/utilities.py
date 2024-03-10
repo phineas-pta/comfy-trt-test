@@ -64,6 +64,26 @@ else:
 torch_to_numpy_dtype_dict = {value: key for (key, value) in numpy_to_torch_dtype_dict.items()}
 
 
+class Registry(dict):
+	def __init__(self, name: str, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.name = name
+
+	def __str__(self):
+		return self.name.title()
+
+	def choices(self):
+		return list(self.keys())
+
+	def register(self, name: str):
+		def decorator(fn, fn_name=name):
+			self[name] = fn
+			return fn
+
+		self[name] = decorator
+		return self[name]
+
+
 class Engine:
 	def __init__(self, engine_path: str):
 		self.engine_path = engine_path
@@ -198,18 +218,20 @@ class Engine:
 			else self.engine.create_execution_context()
 		)
 
-	def allocate_buffers(self, shape_dict: dict = None, device: str = "cuda") -> None:
+	def allocate_buffers(self, shape_dict: dict = None, device: str = "cuda", additional_shapes: dict = None) -> None:
 		nvtx.range_push("allocate_buffers")
 		for idx in range(self.engine.num_io_tensors):
 			binding = self.engine[idx]
-			if shape_dict and binding in shape_dict:
+			if shape_dict is not None and binding in shape_dict:
 				shape = shape_dict[binding].shape
+			elif additional_shapes is not None and binding in additional_shapes:
+				shape = additional_shapes[binding]
 			else:
 				shape = self.context.get_binding_shape(idx)
 			dtype = trt.nptype(self.engine.get_binding_dtype(binding))
 			if self.engine.binding_is_input(binding):
 				self.context.set_binding_shape(idx, shape)
-			tensor = torch.empty(tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]).to(device=device)
+			tensor = torch.zeros(tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]).to(device=device)
 			self.tensors[binding] = tensor
 		nvtx.range_pop()
 

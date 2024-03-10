@@ -43,12 +43,14 @@ class ModelManager:
 		self.update()
 
 	@staticmethod
-	def get_onnx_path(model_name: str) -> tuple[str]:
+	def get_onnx_path(model_name: str, enable_controlnet: bool = False) -> tuple[str]:
+		if enable_controlnet:
+			model_name += "_cnet"
 		onnx_filename = f"{model_name}.onnx"
 		onnx_path = os.path.join(ONNX_MODEL_DIR, onnx_filename)
 		return onnx_filename, onnx_path
 
-	def get_trt_path(self, model_name: str, profile: dict, static_shape: bool) -> tuple[str]:
+	def get_trt_path(self, model_name: str, profile: dict, static_shape: bool, enable_controlnet: bool = False) -> tuple[str]:
 		profile_hash = []
 		n_profiles = 1 if static_shape else 3
 		for k, v in profile.items():
@@ -59,6 +61,8 @@ class ModelManager:
 
 		# shorter hash coz windows file path length limit
 		hash_str = hashlib.blake2b("-".join(profile_hash).encode("utf-8"), digest_size=16).hexdigest()  # 16 digest = 32 char (original >110 char)
+		if enable_controlnet:
+			model_name += "_cnet"
 		trt_filename = model_name + "_" + hash_str + ".trt"
 		trt_path = os.path.join(TRT_MODEL_DIR, trt_filename)
 
@@ -98,10 +102,11 @@ class ModelManager:
 		inpaint: bool,
 		refit: bool,
 		unet_hidden_dim: int,
-		lora: bool
+		lora: bool,
+		controlnet: bool,
 	) -> None:
-		config = ModelConfig(profile, static_shapes, fp32, baseline_model, prediction_type, inpaint, refit, lora, unet_hidden_dim)
-		trt_name, trt_path = self.get_trt_path(model_name, profile, static_shapes)
+		config = ModelConfig(profile, static_shapes, fp32, baseline_model, prediction_type, inpaint, refit, unet_hidden_dim, lora, controlnet)
+		trt_name, _ = self.get_trt_path(model_name, profile, static_shapes)
 
 		base_model_name = model_name
 		if self.cc not in self.all_models:
@@ -123,7 +128,7 @@ class ModelManager:
 		inpaint: bool,
 		unet_hidden_dim: int
 	) -> None:
-		config = ModelConfig([[], [], []], False, fp32, baseline_model, prediction_type, inpaint, True, True, unet_hidden_dim)
+		config = ModelConfig([[], [], []], False, fp32, baseline_model, prediction_type, inpaint, True, unet_hidden_dim, True, True)
 		self.all_models[self.cc][lora_name] = [{"filepath": trt_lora_path, "base_model": base_model, "config": config}]
 		self.write_json()
 

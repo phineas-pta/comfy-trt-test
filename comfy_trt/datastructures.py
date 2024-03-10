@@ -17,8 +17,9 @@ class ModelConfig:
 	prediction_type: str = "ModelType.EPS"  # save model info, for values see `comfy/model_base.py`, breaking change incompatible A1111
 	inpaint: bool = False
 	refit: bool = False
-	lora: bool = False
 	unet_hidden_dim: int = 4
+	lora: bool = False
+	controlnet: bool = False
 
 	def is_compatible_from_dict(self, feed_dict: dict) -> tuple[bool, float]:
 		distance = 0

@@ -158,7 +158,7 @@ class UNetModel:
 			torch.randn(batch_size, self.num_xl_classes, dtype=dtype, device=device) if self.is_xl else None,
 		)
 
-	def get_input_profile(self, profile: ProfileSettings) -> dict:
+	def get_input_profile(self, profile: ProfileSettings) -> dict[str, tuple[int]]:
 		min_batch, opt_batch, max_batch = profile.get_batch_dim()
 		(
 			min_latent_height, latent_height, max_latent_height,
@@ -188,7 +188,7 @@ class UNetModel:
 		return shape_dict
 
 	# Helper utility for weights map
-	def export_weights_map(self, onnx_opt_path: str, weights_map_path: dict):
+	def export_weights_map(self, onnx_opt_path: str, weights_map_path: dict) -> None:
 		onnx_opt_dir = onnx_opt_path
 		state_dict = self.unet.state_dict()
 		onnx_opt_model = onnx.load(onnx_opt_path)
@@ -247,3 +247,64 @@ class UNetModel:
 		onnx_opt_graph = opt.cleanup(return_onnx=True)
 		opt.info(f"{name}: finished")
 		return onnx_opt_graph
+
+
+base_hs = [(320, 1)]*3 + [(320, 2)] + [(640, 2)]*2 + [(640, 4)] + [(1280, 4)]*2
+sd12_hs = base_hs + [(1280, 8)]*4
+sdxl_hs = base_hs + [(1280, 4)]
+
+class ControlNetModel(UNetModel):
+	def __init__(self, unet, version: str, unet_dim: int, embedding_dim: int, text_minlen: int = 77) -> None:
+		super().__init__(unet, version, unet_dim, embedding_dim, text_minlen)
+
+		self.hs_dims = sdxl_hs if self.is_xl else sd12_hs
+		control_axes = {}
+		for i, (_, s) in enumerate(self.hs_dims):
+			control_axes[f"control_{i}"] = {0: "2B", 2: f"H{s}", 3: f"W{s}"}
+		self.dyn_axes.update(control_axes)
+
+	def get_input_names(self) -> list[str]:
+		names = super().get_input_names()
+		names.extend([f"control_{i}" for i in range(len(self.hs_dims))])
+		return names
+
+	def get_sample_input(
+		self,
+		batch_size: int,
+		latent_height: int,
+		latent_width: int,
+		text_len: int,
+		device: str = "cuda",
+		dtype: torch.dtype = torch.float32,
+	) -> tuple[torch.Tensor]:
+		samples = super().get_sample_input(batch_size, latent_height, latent_width, text_len, device, dtype)
+		hs_samples = tuple([
+			torch.randn((batch_size, hs, latent_height // s, latent_width // s), dtype=dtype, device=device)
+			for hs, s in self.hs_dims
+		])
+		return samples + hs_samples
+
+	def get_input_profile(self, profile: ProfileSettings) -> dict[str, tuple[int]]:
+		base_profile = super().get_input_profile(profile)
+		min_batch, opt_batch, max_batch = profile.get_a1111_batch_dim()
+		(
+			min_latent_height, latent_height, max_latent_height,
+			min_latent_width,  latent_width,  max_latent_width,
+		) = profile.get_latent_dim()
+
+		for i, (hs, s) in enumerate(self.hs_dims):
+			base_profile[f"control_{i}"] = [
+				(min_batch, hs, min_latent_height // s, min_latent_width // s),
+				(opt_batch, hs,     latent_height // s,     latent_width // s),
+				(max_batch, hs, max_latent_height // s, max_latent_width // s),
+			]
+		return base_profile
+
+	@staticmethod
+	def get_control_shape_dict(batch_size: int, latent_height: int, latent_width: int, is_xl: bool = False) -> dict[str, tuple[int]]:
+		hs_dims = sdxl_hs if is_xl else sd12_hs
+		shapes = {
+			f"control_{i}": (batch_size, hs, latent_height // s, latent_width // s)
+			for i, (hs, s) in enumerate(hs_dims)
+		}
+		return shapes
