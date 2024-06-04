@@ -1,3 +1,12 @@
+# final update notice
+
+official TensorRT node got released on 2024/06/02: https://github.com/comfyanonymous/ComfyUI_TensorRT
+
+this repo will not be maintained anymore
+
+<details>
+<summary>old README</summary>
+
 # attempt to use TensorRT with ComfyUI
 
 best suited for RTX 20xx-30xx-40xx
@@ -205,4 +214,6 @@ where to download separated CLIP & VAE without checkpoint:
   - https://huggingface.co/stabilityai/sdxl-vae/blob/main/sdxl_vae.safetensors (float32)
   - https://huggingface.co/stabilityai/sd-vae-ft-ema-original/blob/main/vae-ft-ema-560000-ema-pruned.safetensors (float32)
   - https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors (float32)
+</details>
+
 </details>
